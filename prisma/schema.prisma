@@ -45,6 +45,8 @@ model Game {
   result          Result
   pgn             String
   positionsParsed Boolean    @default(false)
+  accuracyWhite   Float?
+  accuracyBlack   Float?
   createdAt       DateTime   @default(now())
   positions       Position[]
 }
