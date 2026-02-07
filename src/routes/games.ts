@@ -7,6 +7,20 @@ function str(val: unknown): string {
   return typeof val === "string" ? val : String(val);
 }
 
+function baseTime(tc: string): number {
+  return parseInt(tc.split("+")[0], 10) || 0;
+}
+
+function matchesCategory(tc: string, category: string): boolean {
+  const b = baseTime(tc);
+  switch (category) {
+    case "bullet": return b < 180;
+    case "blitz": return b >= 180 && b < 600;
+    case "rapid": return b >= 600;
+    default: return false;
+  }
+}
+
 // TODO: Add opening frequency stats endpoint
 // TODO: Add Stockfish evaluation data to position responses
 
@@ -101,18 +115,19 @@ router.get(
 /**
  * GET /users/:username/stats
  *
+ * Returns stats for the 40 most recent games.
+ *
  * Query params:
- *   source      — filter by platform (e.g. "chesscom", "lichess")
- *   timeControl — filter by time control string (e.g. "180", "300+3")
- *   from        — ISO date string, games ending on or after this date
- *   to          — ISO date string, games ending on or before this date
+ *   source       — filter by platform (e.g. "chesscom", "lichess")
+ *   timeControl  — filter by exact time control string (e.g. "180", "300+3")
+ *   timeCategory — filter by category: "bullet", "blitz", or "rapid"
  */
 router.get(
   "/users/:username/stats",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const username = str(req.params.username);
-      const { source, timeControl, from, to } = req.query;
+      const { source, timeControl, timeCategory } = req.query;
 
       const platform = typeof source === "string" ? source.toLowerCase() : undefined;
 
@@ -128,38 +143,48 @@ router.get(
         return;
       }
 
-      const dateFilter: { gte?: Date; lte?: Date } = {};
-      if (from) dateFilter.gte = new Date(String(from));
-      if (to) dateFilter.lte = new Date(String(to));
+      let timeControlFilter: Record<string, unknown> = {};
+      if (typeof timeControl === "string") {
+        timeControlFilter = { timeControl };
+      } else if (typeof timeCategory === "string") {
+        const allTCs = await prisma.game.findMany({
+          where: { userId: user.id },
+          select: { timeControl: true },
+          distinct: ["timeControl"],
+        });
+        const matching = allTCs
+          .map((g) => g.timeControl)
+          .filter((tc) => matchesCategory(tc, timeCategory.toLowerCase()));
+        timeControlFilter = { timeControl: { in: matching } };
+      }
 
-      const where = {
+      const baseWhere = {
         userId: user.id,
-        ...(typeof timeControl === "string" ? { timeControl } : {}),
-        ...(Object.keys(dateFilter).length > 0 ? { endDate: dateFilter } : {}),
+        ...timeControlFilter,
       };
 
-      const [resultGroups, accuracy] = await Promise.all([
-        prisma.game.groupBy({
-          by: ["result"],
-          where,
-          _count: { result: true },
-        }),
-        prisma.game.aggregate({
-          where,
-          _avg: { accuracyWhite: true, accuracyBlack: true },
-        }),
-      ]);
+      // Always limit to the 40 most recent games
+      const recentGames = await prisma.game.findMany({
+        where: baseWhere,
+        select: { id: true, result: true, accuracyWhite: true, accuracyBlack: true },
+        orderBy: { endDate: "desc" },
+        take: 40,
+      });
 
       const counts = { WIN: 0, LOSS: 0, DRAW: 0 };
-      for (const g of resultGroups) {
-        counts[g.result] = g._count.result;
-      }
-      const totalGames = counts.WIN + counts.LOSS + counts.DRAW;
+      let whiteSum = 0, whiteCount = 0, blackSum = 0, blackCount = 0;
 
+      for (const g of recentGames) {
+        counts[g.result]++;
+        if (g.accuracyWhite != null) { whiteSum += g.accuracyWhite; whiteCount++; }
+        if (g.accuracyBlack != null) { blackSum += g.accuracyBlack; blackCount++; }
+      }
+
+      const totalGames = recentGames.length;
       const round2 = (n: number) => Math.round(n * 100) / 100;
 
-      const avgWhite = accuracy._avg.accuracyWhite;
-      const avgBlack = accuracy._avg.accuracyBlack;
+      const avgWhite = whiteCount > 0 ? whiteSum / whiteCount : null;
+      const avgBlack = blackCount > 0 ? blackSum / blackCount : null;
 
       res.json({
         totalGames,

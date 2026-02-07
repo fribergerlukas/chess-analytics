@@ -7,6 +7,7 @@ const router = Router();
 
 const chesscomImportSchema = z.object({
   username: z.string().min(1, "Username is required"),
+  timeCategory: z.enum(["bullet", "blitz", "rapid"]).optional(),
 });
 
 // TODO: Add Lichess import route (POST /lichess)
@@ -17,8 +18,8 @@ router.post(
   "/chesscom",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { username } = chesscomImportSchema.parse(req.body);
-      const imported = await importGames(username);
+      const { username, timeCategory } = chesscomImportSchema.parse(req.body);
+      const imported = await importGames(username, timeCategory);
 
       let parsed = 0;
       if (imported > 0) {

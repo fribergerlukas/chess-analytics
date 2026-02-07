@@ -44,6 +44,7 @@ interface ChesscomGame {
   pgn: string;
   white: ChesscomPlayer;
   black: ChesscomPlayer;
+  accuracies?: { white: number; black: number };
 }
 
 function computeResult(game: ChesscomGame, username: string): Result {
@@ -66,7 +67,23 @@ function computeResult(game: ChesscomGame, username: string): Result {
 
 // TODO: Add hook point for future Stockfish analysis after import
 
-export async function importGames(username: string): Promise<number> {
+const MAX_GAMES = 40;
+
+function baseTime(tc: string): number {
+  return parseInt(tc.split("+")[0], 10) || 0;
+}
+
+function matchesCategory(tc: string, category: string): boolean {
+  const b = baseTime(tc);
+  switch (category) {
+    case "bullet": return b < 180;
+    case "blitz": return b >= 180 && b < 600;
+    case "rapid": return b >= 600;
+    default: return false;
+  }
+}
+
+export async function importGames(username: string, timeCategory?: string): Promise<number> {
   await validateUser(username);
 
   const user = await prisma.user.upsert({
@@ -80,18 +97,50 @@ export async function importGames(username: string): Promise<number> {
     return 0;
   }
 
-  const lastArchiveUrl = archives[archives.length - 1];
-  const { games } = await fetchGames(lastArchiveUrl);
+  // Collect the most recent games by walking archives from newest to oldest
+  const recentGames: ChesscomGame[] = [];
+  for (let i = archives.length - 1; i >= 0 && recentGames.length < MAX_GAMES; i--) {
+    const { games } = await fetchGames(archives[i]);
+    // Games within an archive are chronological; reverse to get newest first
+    for (let j = games.length - 1; j >= 0 && recentGames.length < MAX_GAMES; j--) {
+      // Skip games that don't match the requested time category
+      if (timeCategory && !matchesCategory(games[j].time_control, timeCategory)) {
+        continue;
+      }
+      recentGames.push(games[j]);
+    }
+  }
+
+  // Clear old games for this user so only the latest 40 are kept
+  const keepIds = recentGames.map((g) => g.url);
+  await prisma.position.deleteMany({
+    where: { game: { userId: user.id, externalId: { notIn: keepIds } } },
+  });
+  await prisma.game.deleteMany({
+    where: { userId: user.id, externalId: { notIn: keepIds } },
+  });
 
   let imported = 0;
 
-  for (const game of games) {
+  for (const game of recentGames) {
     const externalId = game.url;
 
     const existing = await prisma.game.findUnique({
       where: { externalId },
     });
-    if (existing) continue;
+    if (existing) {
+      // Update accuracy if chess.com now provides it
+      if (existing.accuracyWhite == null && game.accuracies) {
+        await prisma.game.update({
+          where: { id: existing.id },
+          data: {
+            accuracyWhite: game.accuracies.white,
+            accuracyBlack: game.accuracies.black,
+          },
+        });
+      }
+      continue;
+    }
 
     await prisma.game.create({
       data: {
@@ -101,6 +150,8 @@ export async function importGames(username: string): Promise<number> {
         timeControl: game.time_control,
         result: computeResult(game, username),
         pgn: game.pgn,
+        accuracyWhite: game.accuracies?.white ?? null,
+        accuracyBlack: game.accuracies?.black ?? null,
       },
     });
 
