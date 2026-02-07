@@ -22,14 +22,35 @@ model User {
   games     Game[]
 }
 
+enum Side {
+  WHITE
+  BLACK
+}
+
 model Game {
-  id          Int      @id @default(autoincrement())
-  externalId  String   @unique
-  userId      Int
-  user        User     @relation(fields: [userId], references: [id])
-  endDate     DateTime
-  timeControl String
-  result      Result
-  pgn         String
-  createdAt   DateTime @default(now())
+  id              Int        @id @default(autoincrement())
+  externalId      String     @unique
+  userId          Int
+  user            User       @relation(fields: [userId], references: [id])
+  endDate         DateTime
+  timeControl     String
+  result          Result
+  pgn             String
+  positionsParsed Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+  positions       Position[]
+}
+
+model Position {
+  id         Int      @id @default(autoincrement())
+  gameId     Int
+  game       Game     @relation(fields: [gameId], references: [id])
+  ply        Int
+  fen        String
+  moveUci    String
+  san        String
+  sideToMove Side
+  createdAt  DateTime @default(now())
+
+  @@index([gameId])
 }
