@@ -1,0 +1,255 @@
+"use client";
+
+import { useState, FormEvent } from "react";
+
+interface StatsData {
+  totalGames: number;
+  results: {
+    wins: number;
+    losses: number;
+    draws: number;
+    winRate: number;
+    lossRate: number;
+    drawRate: number;
+  };
+  accuracy: {
+    white: number | null;
+    black: number | null;
+    overall: number | null;
+  };
+}
+
+const TIME_CONTROLS = [
+  { label: "All", value: "" },
+  { label: "Bullet (60)", value: "60" },
+  { label: "Bullet (120)", value: "120" },
+  { label: "Blitz (180)", value: "180" },
+  { label: "Blitz (300)", value: "300" },
+  { label: "Rapid (600)", value: "600" },
+  { label: "Rapid (900)", value: "900" },
+  { label: "Rapid (1800)", value: "1800" },
+];
+
+const API_BASE = "http://localhost:3000";
+
+export default function Home() {
+  const [username, setUsername] = useState("");
+  const [timeControl, setTimeControl] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [stats, setStats] = useState<StatsData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [queriedUser, setQueriedUser] = useState("");
+
+  async function fetchStats(e?: FormEvent) {
+    e?.preventDefault();
+    const trimmed = username.trim();
+    if (!trimmed) return;
+
+    setLoading(true);
+    setError("");
+    setStats(null);
+
+    const params = new URLSearchParams();
+    if (timeControl) params.set("timeControl", timeControl);
+    if (fromDate) params.set("from", fromDate);
+    if (toDate) params.set("to", toDate);
+
+    const qs = params.toString();
+    const url = `${API_BASE}/users/${encodeURIComponent(trimmed)}/stats${qs ? `?${qs}` : ""}`;
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || `Request failed (${res.status})`);
+      }
+      const data: StatsData = await res.json();
+      setStats(data);
+      setQueriedUser(trimmed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+      {/* Header */}
+      <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
+        <div className="mx-auto max-w-4xl px-6 py-5">
+          <h1 className="text-2xl font-bold tracking-tight">Chess Analytics</h1>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-4xl px-6 py-8 space-y-8">
+        {/* Username search */}
+        <form onSubmit={fetchStats} className="flex gap-3">
+          <input
+            type="text"
+            placeholder="Enter chess.com username..."
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-400"
+          />
+          <button
+            type="submit"
+            disabled={loading || !username.trim()}
+            className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? "Loading..." : "Get Stats"}
+          </button>
+        </form>
+
+        {/* Filter bar */}
+        <div className="flex flex-wrap gap-4 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              Time Control
+            </label>
+            <select
+              value={timeControl}
+              onChange={(e) => setTimeControl(e.target.value)}
+              className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {TIME_CONTROLS.map((tc) => (
+                <option key={tc.value} value={tc.value}>
+                  {tc.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              From
+            </label>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              To
+            </label>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {stats && (
+            <button
+              type="button"
+              onClick={() => fetchStats()}
+              className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-4 py-2 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              Apply Filters
+            </button>
+          )}
+        </div>
+
+        {/* Loading state */}
+        {loading && (
+          <div className="flex justify-center py-16">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-300 border-t-blue-600" />
+          </div>
+        )}
+
+        {/* Error state */}
+        {error && (
+          <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+            {error}
+          </div>
+        )}
+
+        {/* Stats cards */}
+        {stats && !loading && (
+          <div className="space-y-6">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Showing stats for <span className="font-semibold text-zinc-900 dark:text-zinc-100">{queriedUser}</span>
+            </p>
+
+            {/* Total games */}
+            <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
+              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Total Games</p>
+              <p className="mt-1 text-4xl font-bold">{stats.totalGames}</p>
+            </div>
+
+            {/* Win / Loss / Draw */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
+                <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Wins</p>
+                <p className="mt-1 text-3xl font-bold text-green-600 dark:text-green-400">
+                  {stats.results.wins}
+                </p>
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                  {stats.results.winRate}%
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
+                <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Losses</p>
+                <p className="mt-1 text-3xl font-bold text-red-600 dark:text-red-400">
+                  {stats.results.losses}
+                </p>
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                  {stats.results.lossRate}%
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
+                <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Draws</p>
+                <p className="mt-1 text-3xl font-bold text-yellow-600 dark:text-yellow-400">
+                  {stats.results.draws}
+                </p>
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                  {stats.results.drawRate}%
+                </p>
+              </div>
+            </div>
+
+            {/* Accuracy */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
+                <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Accuracy (White)</p>
+                <p className="mt-1 text-3xl font-bold">
+                  {stats.accuracy.white != null ? `${stats.accuracy.white}%` : "N/A"}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
+                <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Accuracy (Black)</p>
+                <p className="mt-1 text-3xl font-bold">
+                  {stats.accuracy.black != null ? `${stats.accuracy.black}%` : "N/A"}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
+                <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Accuracy (Overall)</p>
+                <p className="mt-1 text-3xl font-bold">
+                  {stats.accuracy.overall != null ? `${stats.accuracy.overall}%` : "N/A"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Empty state — no stats fetched yet */}
+        {!stats && !loading && !error && (
+          <div className="text-center py-16 text-zinc-400 dark:text-zinc-500">
+            Enter a username to view their chess stats.
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
