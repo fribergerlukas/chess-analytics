@@ -172,6 +172,8 @@ router.get(
           sideToMove: true,
           eval: true,
           evalDepth: true,
+          cpLoss: true,
+          classification: true,
         },
         orderBy: { ply: "asc" },
         take: limit,
@@ -181,6 +183,50 @@ router.get(
       const total = await prisma.position.count({ where: { gameId } });
 
       res.json({ positions, total, limit, offset });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /games/:gameId/blunders
+ *
+ * Returns positions classified as INACCURACY, MISTAKE, or BLUNDER.
+ */
+router.get(
+  "/games/:gameId/blunders",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const gameId = Number(str(req.params.gameId));
+      if (isNaN(gameId)) {
+        res.status(400).json({ error: "gameId must be a number" });
+        return;
+      }
+
+      const game = await prisma.game.findUnique({ where: { id: gameId } });
+      if (!game) {
+        res.status(404).json({ error: `Game ${gameId} not found` });
+        return;
+      }
+
+      const positions = await prisma.position.findMany({
+        where: {
+          gameId,
+          classification: { in: ["INACCURACY", "MISTAKE", "BLUNDER"] },
+        },
+        select: {
+          ply: true,
+          san: true,
+          fen: true,
+          eval: true,
+          cpLoss: true,
+          classification: true,
+        },
+        orderBy: { ply: "asc" },
+      });
+
+      res.json({ blunders: positions });
     } catch (err) {
       next(err);
     }

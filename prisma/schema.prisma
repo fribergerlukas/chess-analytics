@@ -27,6 +27,14 @@ enum Side {
   BLACK
 }
 
+enum MoveClassification {
+  BEST
+  GOOD
+  INACCURACY
+  MISTAKE
+  BLUNDER
+}
+
 model Game {
   id              Int        @id @default(autoincrement())
   externalId      String     @unique
@@ -50,9 +58,11 @@ model Position {
   moveUci    String
   san        String
   sideToMove Side
-  eval       Float?
-  evalDepth  Int?
-  createdAt  DateTime @default(now())
+  eval           Float?
+  evalDepth      Int?
+  cpLoss         Float?
+  classification MoveClassification?
+  createdAt      DateTime @default(now())
 
   @@index([gameId])
 }
