@@ -20,6 +20,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   games     Game[]
+  puzzles   Puzzle[]
 }
 
 enum Side {
@@ -49,6 +50,7 @@ model Game {
   accuracyBlack   Float?
   createdAt       DateTime   @default(now())
   positions       Position[]
+  puzzles         Puzzle[]
 }
 
 model Position {
@@ -62,9 +64,33 @@ model Position {
   sideToMove Side
   eval           Float?
   evalDepth      Int?
+  bestMoveUci    String?
+  pv             String?
   cpLoss         Float?
   classification MoveClassification?
   createdAt      DateTime @default(now())
+  puzzles        Puzzle[]
 
   @@index([gameId])
+}
+
+model Puzzle {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id])
+  gameId        Int
+  game          Game     @relation(fields: [gameId], references: [id])
+  positionId    Int
+  position      Position @relation(fields: [positionId], references: [id])
+  fen           String
+  sideToMove    Side
+  playedMoveUci String
+  bestMoveUci   String
+  pv            String
+  evalBeforeCp  Int?
+  evalAfterCp   Int?
+  deltaCp       Int?
+  createdAt     DateTime @default(now())
+
+  @@unique([userId, positionId])
 }

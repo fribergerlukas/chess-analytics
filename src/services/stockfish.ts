@@ -4,6 +4,8 @@ export interface EvalResult {
   /** Centipawns from the side-to-move's perspective */
   score: number;
   depth: number;
+  bestMove: string;
+  pv: string;
 }
 
 export class StockfishEngine {
@@ -45,6 +47,7 @@ export class StockfishEngine {
 
     let lastScore = 0;
     let lastDepth = 0;
+    let lastPv = "";
 
     const result = await new Promise<EvalResult>((resolve) => {
       this.listener = (line: string) => {
@@ -52,8 +55,10 @@ export class StockfishEngine {
           const depthMatch = line.match(/\bdepth (\d+)/);
           const cpMatch = line.match(/\bscore cp (-?\d+)/);
           const mateMatch = line.match(/\bscore mate (-?\d+)/);
+          const pvMatch = line.match(/\bpv (.+)/);
 
           if (depthMatch) lastDepth = parseInt(depthMatch[1], 10);
+          if (pvMatch) lastPv = pvMatch[1].trim();
 
           if (cpMatch) {
             lastScore = parseInt(cpMatch[1], 10);
@@ -64,8 +69,9 @@ export class StockfishEngine {
         }
 
         if (line.startsWith("bestmove")) {
+          const bestMove = line.split(" ")[1] || "";
           this.listener = null;
-          resolve({ score: lastScore, depth: lastDepth });
+          resolve({ score: lastScore, depth: lastDepth, bestMove, pv: lastPv });
         }
       };
 

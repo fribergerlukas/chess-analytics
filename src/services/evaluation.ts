@@ -26,7 +26,12 @@ export async function evaluateGamePositions(
 
     await prisma.position.update({
       where: { id: pos.id },
-      data: { eval: evalFromWhite, evalDepth: result.depth },
+      data: {
+        eval: evalFromWhite,
+        evalDepth: result.depth,
+        bestMoveUci: result.bestMove || null,
+        pv: result.pv || null,
+      },
     });
   }
 
