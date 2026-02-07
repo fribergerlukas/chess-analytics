@@ -7,7 +7,7 @@ function str(val: unknown): string {
   return typeof val === "string" ? val : String(val);
 }
 
-// TODO: Add stats endpoints (win rate, avg game length, opening frequency)
+// TODO: Add opening frequency stats endpoint
 // TODO: Add Stockfish evaluation data to position responses
 
 /**
@@ -91,6 +91,98 @@ router.get(
         total,
         limit,
         offset,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /users/:username/stats
+ *
+ * Query params:
+ *   source      — filter by platform (e.g. "chesscom", "lichess")
+ *   timeControl — filter by time control string (e.g. "180", "300+3")
+ *   from        — ISO date string, games ending on or after this date
+ *   to          — ISO date string, games ending on or before this date
+ */
+router.get(
+  "/users/:username/stats",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const username = str(req.params.username);
+      const { source, timeControl, from, to } = req.query;
+
+      const platform = typeof source === "string" ? source.toLowerCase() : undefined;
+
+      const user = await prisma.user.findFirst({
+        where: {
+          username: username.toLowerCase(),
+          ...(platform ? { platform } : {}),
+        },
+      });
+
+      if (!user) {
+        res.status(404).json({ error: `User "${username}" not found` });
+        return;
+      }
+
+      const dateFilter: { gte?: Date; lte?: Date } = {};
+      if (from) dateFilter.gte = new Date(String(from));
+      if (to) dateFilter.lte = new Date(String(to));
+
+      const where = {
+        userId: user.id,
+        ...(typeof timeControl === "string" ? { timeControl } : {}),
+        ...(Object.keys(dateFilter).length > 0 ? { endDate: dateFilter } : {}),
+      };
+
+      const [resultGroups, accuracy] = await Promise.all([
+        prisma.game.groupBy({
+          by: ["result"],
+          where,
+          _count: { result: true },
+        }),
+        prisma.game.aggregate({
+          where,
+          _avg: { accuracyWhite: true, accuracyBlack: true },
+        }),
+      ]);
+
+      const counts = { WIN: 0, LOSS: 0, DRAW: 0 };
+      for (const g of resultGroups) {
+        counts[g.result] = g._count.result;
+      }
+      const totalGames = counts.WIN + counts.LOSS + counts.DRAW;
+
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+
+      const avgWhite = accuracy._avg.accuracyWhite;
+      const avgBlack = accuracy._avg.accuracyBlack;
+
+      res.json({
+        totalGames,
+        results: {
+          wins: counts.WIN,
+          losses: counts.LOSS,
+          draws: counts.DRAW,
+          winRate: totalGames ? round2((counts.WIN / totalGames) * 100) : 0,
+          lossRate: totalGames ? round2((counts.LOSS / totalGames) * 100) : 0,
+          drawRate: totalGames ? round2((counts.DRAW / totalGames) * 100) : 0,
+        },
+        accuracy: {
+          white: avgWhite != null ? round2(avgWhite) : null,
+          black: avgBlack != null ? round2(avgBlack) : null,
+          overall:
+            avgWhite != null && avgBlack != null
+              ? round2((avgWhite + avgBlack) / 2)
+              : avgWhite != null
+                ? round2(avgWhite)
+                : avgBlack != null
+                  ? round2(avgBlack)
+                  : null,
+        },
       });
     } catch (err) {
       next(err);
