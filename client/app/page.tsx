@@ -19,6 +19,15 @@ interface StatsData {
   };
 }
 
+interface GameData {
+  id: number;
+  endTime: string;
+  timeControl: string;
+  result: "WIN" | "LOSS" | "DRAW";
+  accuracyWhite: number | null;
+  accuracyBlack: number | null;
+}
+
 const TIME_CATEGORIES = [
   { label: "Bullet", value: "bullet" },
   { label: "Blitz", value: "blitz" },
@@ -31,6 +40,7 @@ export default function Home() {
   const [username, setUsername] = useState("");
   const [timeCategory, setTimeCategory] = useState("bullet");
   const [stats, setStats] = useState<StatsData | null>(null);
+  const [games, setGames] = useState<GameData[]>([]);
   const [rating, setRating] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
@@ -45,6 +55,7 @@ export default function Home() {
     setLoading(true);
     setError("");
     setStats(null);
+    setGames([]);
     setRating(null);
     setStatusMsg("Importing games from chess.com...");
 
@@ -91,6 +102,14 @@ export default function Home() {
       const data: StatsData = await res.json();
       setStats(data);
       setQueriedUser(trimmed);
+
+      // Fetch game list
+      const gamesUrl = `${API_BASE}/users/${encodeURIComponent(trimmed)}/games?limit=40`;
+      const gamesRes = await fetch(gamesUrl);
+      if (gamesRes.ok) {
+        const gamesData = await gamesRes.json();
+        setGames(gamesData.games);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -231,6 +250,63 @@ export default function Home() {
                 </p>
               </div>
             </div>
+
+            {/* Game list */}
+            {games.length > 0 && (
+              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-200 dark:border-zinc-800 text-left text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                      <th className="px-4 py-3">#</th>
+                      <th className="px-4 py-3">Date</th>
+                      <th className="px-4 py-3">Result</th>
+                      <th className="px-4 py-3">Time Control</th>
+                      <th className="px-4 py-3 text-right">Acc (W)</th>
+                      <th className="px-4 py-3 text-right">Acc (B)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {games.map((game, i) => (
+                      <tr
+                        key={game.id}
+                        className={`border-b border-zinc-100 dark:border-zinc-800 last:border-0 ${
+                          game.result === "WIN"
+                            ? "bg-green-50/50 dark:bg-green-950/20"
+                            : game.result === "LOSS"
+                              ? "bg-red-50/50 dark:bg-red-950/20"
+                              : ""
+                        }`}
+                      >
+                        <td className="px-4 py-2.5 text-zinc-400 dark:text-zinc-500">{i + 1}</td>
+                        <td className="px-4 py-2.5">
+                          {new Date(game.endTime).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span
+                            className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${
+                              game.result === "WIN"
+                                ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
+                                : game.result === "LOSS"
+                                  ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"
+                                  : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400"
+                            }`}
+                          >
+                            {game.result}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-zinc-500 dark:text-zinc-400">{game.timeControl}</td>
+                        <td className="px-4 py-2.5 text-right">
+                          {game.accuracyWhite != null ? `${game.accuracyWhite}%` : "—"}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          {game.accuracyBlack != null ? `${game.accuracyBlack}%` : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
