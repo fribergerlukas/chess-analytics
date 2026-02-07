@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import importRouter from "./routes/import";
+import gamesRouter from "./routes/games";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -7,6 +8,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 app.use("/import", importRouter);
+app.use(gamesRouter);
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err.stack);

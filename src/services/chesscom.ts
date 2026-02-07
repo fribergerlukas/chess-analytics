@@ -1,6 +1,5 @@
-import { PrismaClient, Result } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { Result } from "@prisma/client";
+import prisma from "../lib/prisma";
 
 export async function validateUser(username: string): Promise<void> {
   const res = await fetch(
