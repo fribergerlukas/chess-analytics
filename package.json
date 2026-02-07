@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "parse-positions": "ts-node src/jobs/parse-positions.ts"
+    "parse-positions": "ts-node src/jobs/parse-positions.ts",
+    "evaluate": "ts-node src/jobs/evaluate-positions.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.3.0",

@@ -170,6 +170,8 @@ router.get(
           moveUci: true,
           san: true,
           sideToMove: true,
+          eval: true,
+          evalDepth: true,
         },
         orderBy: { ply: "asc" },
         take: limit,

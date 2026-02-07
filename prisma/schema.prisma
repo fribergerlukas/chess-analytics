@@ -50,6 +50,8 @@ model Position {
   moveUci    String
   san        String
   sideToMove Side
+  eval       Float?
+  evalDepth  Int?
   createdAt  DateTime @default(now())
 
   @@index([gameId])
