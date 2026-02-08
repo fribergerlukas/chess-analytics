@@ -75,6 +75,7 @@ export default function PuzzlesPage() {
   const [checking, setChecking] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
+  const [showPlayedMove, setShowPlayedMove] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -143,6 +144,7 @@ export default function PuzzlesPage() {
     setGame(chess);
     setCheckResult(null);
     setSelectedSquare(null);
+    setShowPlayedMove(false);
   }
 
   function goToNextPuzzle() {
@@ -155,15 +157,23 @@ export default function PuzzlesPage() {
   function tryMove(from: string, to: string): boolean {
     if (!activePuzzle || !game || checkResult || from === to) return false;
 
-    const moveCopy = new Chess(game.fen());
-    const move = moveCopy.move({
+    const piece = game.get(from as Square);
+    const isPromotion =
+      piece?.type === "p" &&
+      ((piece.color === "w" && to[1] === "8") ||
+       (piece.color === "b" && to[1] === "1"));
+
+    const moveOpts: { from: Square; to: Square; promotion?: "q" } = {
       from: from as Square,
       to: to as Square,
-      promotion: "q",
-    });
+    };
+    if (isPromotion) moveOpts.promotion = "q";
+
+    const moveCopy = new Chess(game.fen());
+    const move = moveCopy.move(moveOpts);
     if (!move) return false;
 
-    game.move({ from: from as Square, to: to as Square, promotion: "q" });
+    game.move(moveOpts);
     setGame(new Chess(game.fen()));
     setSelectedSquare(null);
 
@@ -269,11 +279,18 @@ export default function PuzzlesPage() {
     return styles;
   }
 
-  // Build arrow for best move
-  function getBestMoveArrows(): Arrow[] {
-    if (!checkResult) return [];
-    const { from, to } = uciToSquares(checkResult.bestMove);
-    return [{ startSquare: from, endSquare: to, color: "rgba(0, 128, 255, 0.7)" }];
+  // Build arrows for best move and optionally the played move
+  function getArrows(): Arrow[] {
+    const arrows: Arrow[] = [];
+    if (checkResult) {
+      const best = uciToSquares(checkResult.bestMove);
+      arrows.push({ startSquare: best.from, endSquare: best.to, color: "rgba(0, 128, 255, 0.7)" });
+    }
+    if (showPlayedMove && activePuzzle) {
+      const played = uciToSquares(activePuzzle.playedMoveUci);
+      arrows.push({ startSquare: played.from, endSquare: played.to, color: "rgba(220, 38, 38, 0.7)" });
+    }
+    return arrows;
   }
 
   // Puzzle Solver view
@@ -305,7 +322,7 @@ export default function PuzzlesPage() {
                     onSquareClick: handleSquareClick,
                     boardOrientation: orientation,
                     allowDragging: checkResult === null,
-                    arrows: getBestMoveArrows(),
+                    arrows: getArrows(),
                     squareStyles: getSquareStyles(),
                   }}
                 />
@@ -385,6 +402,15 @@ export default function PuzzlesPage() {
                       {checkResult.bestMove}
                     </span>
                   </p>
+                  <button
+                    onClick={() => setShowPlayedMove((v) => !v)}
+                    className="mt-1 text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                  >
+                    {showPlayedMove ? "Hide" : "Show"} played move{" "}
+                    <span className="font-mono text-red-600 dark:text-red-400">
+                      {activePuzzle.playedMoveUci}
+                    </span>
+                  </button>
                 </div>
               )}
 
@@ -397,6 +423,7 @@ export default function PuzzlesPage() {
                         setGame(new Chess(activePuzzle.fen));
                         setCheckResult(null);
                         setSelectedSquare(null);
+                        setShowPlayedMove(false);
                       }}
                       className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 transition-colors"
                     >
