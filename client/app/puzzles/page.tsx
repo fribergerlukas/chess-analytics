@@ -76,6 +76,7 @@ export default function PuzzlesPage() {
   const [mounted, setMounted] = useState(false);
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [showPlayedMove, setShowPlayedMove] = useState(false);
+  const [highlightedSquares, setHighlightedSquares] = useState<Set<string>>(new Set());
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -91,7 +92,6 @@ export default function PuzzlesPage() {
     setActivePuzzle(null);
 
     try {
-      // Step 1: Import games from chess.com
       setStatusMsg("Importing games from chess.com...");
       const importRes = await fetch(`${API_BASE}/import/chesscom`, {
         method: "POST",
@@ -103,7 +103,6 @@ export default function PuzzlesPage() {
         throw new Error(body?.error || `Import failed (${importRes.status})`);
       }
 
-      // Step 2: Generate puzzles from evaluated positions
       setStatusMsg("Generating puzzles from your games...");
       const genRes = await fetch(
         `${API_BASE}/users/${encodeURIComponent(trimmed)}/puzzles/generate`,
@@ -114,7 +113,6 @@ export default function PuzzlesPage() {
         throw new Error(body?.error || `Puzzle generation failed (${genRes.status})`);
       }
 
-      // Step 3: Fetch the puzzle list
       setStatusMsg("Loading puzzles...");
       const puzzleParams = new URLSearchParams({ limit: "20", timeCategory });
       if (ratedFilter !== "all") puzzleParams.set("rated", ratedFilter);
@@ -145,6 +143,7 @@ export default function PuzzlesPage() {
     setCheckResult(null);
     setSelectedSquare(null);
     setShowPlayedMove(false);
+    setHighlightedSquares(new Set());
   }
 
   function goToNextPuzzle() {
@@ -176,6 +175,7 @@ export default function PuzzlesPage() {
     game.move(moveOpts);
     setGame(new Chess(game.fen()));
     setSelectedSquare(null);
+    setHighlightedSquares(new Set());
 
     const uciMove = from + to + (move.promotion ? move.promotion : "");
 
@@ -217,18 +217,15 @@ export default function PuzzlesPage() {
   }) {
     if (!game || checkResult || !square) return;
 
-    // Clicking the already-selected piece deselects it
     if (selectedSquare === square) {
       setSelectedSquare(null);
       return;
     }
 
-    // If a piece is selected, try to capture on this square
     if (selectedSquare && selectedSquare !== square) {
       if (tryMove(selectedSquare, square)) return;
     }
 
-    // Select this piece if it belongs to the side to move
     const piece = game.get(square as Square);
     if (piece) {
       const isWhitePiece = piece.color === "w";
@@ -248,71 +245,88 @@ export default function PuzzlesPage() {
     square: string;
   }) {
     if (!game || checkResult || !selectedSquare) return;
-
-    // Try to move selected piece to this empty square
     if (tryMove(selectedSquare, square)) return;
-
-    // Deselect if clicking an invalid square
     setSelectedSquare(null);
   }
 
-  // Build highlight styles for selected piece + legal moves
+  function handleSquareRightClick({ square }: { piece: { pieceType: string } | null; square: string }) {
+    setHighlightedSquares((prev) => {
+      const next = new Set(prev);
+      if (next.has(square)) {
+        next.delete(square);
+      } else {
+        next.add(square);
+      }
+      return next;
+    });
+  }
+
   function getSquareStyles(): Record<string, React.CSSProperties> {
     const styles: Record<string, React.CSSProperties> = {};
-    if (!selectedSquare || !game || checkResult) return styles;
 
-    // Highlight selected square
-    styles[selectedSquare] = { backgroundColor: "rgba(255, 255, 0, 0.4)" };
-
-    // Highlight legal move targets
-    const moves = game.moves({ square: selectedSquare, verbose: true });
-    for (const move of moves) {
-      const hasPiece = game.get(move.to as Square);
-      styles[move.to] = hasPiece
-        ? {
-            background: "radial-gradient(circle, transparent 55%, rgba(0, 0, 0, 0.15) 55%)",
-          }
-        : {
-            background: "radial-gradient(circle, rgba(0, 0, 0, 0.15) 25%, transparent 25%)",
-          };
+    // Right-click highlights
+    for (const sq of highlightedSquares) {
+      styles[sq] = { backgroundColor: "rgba(235, 97, 80, 0.8)" };
     }
+
+    // Selected piece + legal move dots (override highlights)
+    if (selectedSquare && game && !checkResult) {
+      styles[selectedSquare] = { backgroundColor: "rgba(255, 255, 0, 0.4)" };
+
+      const moves = game.moves({ square: selectedSquare, verbose: true });
+      for (const move of moves) {
+        const hasPiece = game.get(move.to as Square);
+        styles[move.to] = hasPiece
+          ? { background: "radial-gradient(circle, transparent 55%, rgba(0, 0, 0, 0.15) 55%)" }
+          : { background: "radial-gradient(circle, rgba(0, 0, 0, 0.15) 25%, transparent 25%)" };
+      }
+    }
+
     return styles;
   }
 
-  // Build arrows for best move and optionally the played move
   function getArrows(): Arrow[] {
     const arrows: Arrow[] = [];
     if (checkResult) {
       const best = uciToSquares(checkResult.bestMove);
-      arrows.push({ startSquare: best.from, endSquare: best.to, color: "rgba(0, 128, 255, 0.7)" });
+      arrows.push({ startSquare: best.from, endSquare: best.to, color: "rgba(105, 146, 62, 0.85)" });
     }
     if (showPlayedMove && activePuzzle) {
       const played = uciToSquares(activePuzzle.playedMoveUci);
-      arrows.push({ startSquare: played.from, endSquare: played.to, color: "rgba(220, 38, 38, 0.7)" });
+      arrows.push({ startSquare: played.from, endSquare: played.to, color: "rgba(194, 64, 52, 0.85)" });
     }
     return arrows;
   }
 
-  // Puzzle Solver view
+  // ── Puzzle Solver View ──
   if (activePuzzle && game) {
     const orientation = activePuzzle.sideToMove === "WHITE" ? "white" : "black";
 
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-        <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-          <div className="mx-auto max-w-5xl px-6 py-5 flex items-center justify-between">
-            <h1 className="text-2xl font-bold tracking-tight">Chess Analytics</h1>
-            <nav className="flex gap-4 text-sm font-medium">
-              <Link href="/" className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">Dashboard</Link>
-              <Link href="/puzzles" className="text-blue-600 dark:text-blue-400">Puzzles</Link>
-            </nav>
+      <div className="min-h-screen" style={{ backgroundColor: "#312e2b", color: "#fff" }}>
+        {/* Nav bar */}
+        <header style={{ backgroundColor: "#272522", borderBottom: "1px solid #3d3a37" }}>
+          <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <Link href="/" className="text-xl font-bold" style={{ color: "#81b64c" }}>
+                Chess Analytics
+              </Link>
+              <nav className="flex gap-4 text-sm font-semibold">
+                <Link href="/" style={{ color: "#9e9b98" }} className="hover:text-white transition-colors">
+                  Dashboard
+                </Link>
+                <Link href="/puzzles" style={{ color: "#81b64c" }}>
+                  Puzzles
+                </Link>
+              </nav>
+            </div>
           </div>
         </header>
 
-        <main className="mx-auto max-w-5xl px-6 py-8">
-          <div className="flex flex-col lg:flex-row gap-8">
-            {/* Chessboard */}
-            <div className="flex-shrink-0" style={{ width: 440, height: 440 }}>
+        <main className="mx-auto max-w-6xl px-4 py-6">
+          <div className="flex flex-col lg:flex-row gap-6 items-start justify-center">
+            {/* Board */}
+            <div className="flex-shrink-0 rounded-md overflow-hidden" style={{ width: 520, height: 520 }}>
               {mounted && (
                 <Chessboard
                   options={{
@@ -320,8 +334,11 @@ export default function PuzzlesPage() {
                     onPieceDrop: handlePieceDrop,
                     onPieceClick: handlePieceClick,
                     onSquareClick: handleSquareClick,
+                    onSquareRightClick: handleSquareRightClick,
                     boardOrientation: orientation,
                     allowDragging: checkResult === null,
+                    darkSquareStyle: { backgroundColor: "#6596EB" },
+                    lightSquareStyle: { backgroundColor: "#EAF1F8" },
                     arrows: getArrows(),
                     squareStyles: getSquareStyles(),
                   }}
@@ -329,94 +346,111 @@ export default function PuzzlesPage() {
               )}
             </div>
 
-            {/* Info panel */}
-            <div className="flex-1 space-y-4">
-              <button
-                onClick={() => setActivePuzzle(null)}
-                className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
-              >
-                &larr; Back to List
-              </button>
+            {/* Side Panel */}
+            <div className="flex-1 max-w-sm w-full space-y-4">
+              {/* Puzzle header card */}
+              <div className="rounded-md p-5" style={{ backgroundColor: "#272522" }}>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-bold" style={{ color: "#fff" }}>
+                    Puzzle #{activePuzzleIndex + 1}
+                  </h2>
+                  <button
+                    onClick={() => setActivePuzzle(null)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded transition-colors"
+                    style={{ backgroundColor: "#3d3a37", color: "#9e9b98" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#4b4847")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#3d3a37")}
+                  >
+                    Back to List
+                  </button>
+                </div>
 
-              <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 space-y-3">
-                <h2 className="text-lg font-semibold">
-                  Puzzle #{activePuzzleIndex + 1}
-                </h2>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  Find the best move for{" "}
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">
-                    {activePuzzle.sideToMove === "WHITE" ? "White" : "Black"}
-                  </span>
-                </p>
-                <div className="grid grid-cols-2 gap-3 text-sm">
+                {/* Prompt */}
+                <div
+                  className="rounded px-4 py-3 mb-4 text-sm font-semibold"
+                  style={{
+                    backgroundColor: activePuzzle.sideToMove === "WHITE" ? "#f0d9b5" : "#b58863",
+                    color: activePuzzle.sideToMove === "WHITE" ? "#312e2b" : "#fff",
+                  }}
+                >
+                  Your turn — find the best move for {activePuzzle.sideToMove === "WHITE" ? "White" : "Black"}
+                </div>
+
+                {/* Game info */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
-                    <span className="text-zinc-500 dark:text-zinc-400">Game</span>
-                    <p className="font-medium">
-                      #{activePuzzle.game.id} — {new Date(activePuzzle.game.endDate).toLocaleDateString()}
+                    <span style={{ color: "#9e9b98" }}>Game</span>
+                    <p className="font-medium" style={{ color: "#c8c5c2" }}>
+                      #{activePuzzle.game.id}
                     </p>
                   </div>
                   <div>
-                    <span className="text-zinc-500 dark:text-zinc-400">Time Control</span>
-                    <p className="font-medium">{activePuzzle.game.timeControl}</p>
+                    <span style={{ color: "#9e9b98" }}>Date</span>
+                    <p className="font-medium" style={{ color: "#c8c5c2" }}>
+                      {new Date(activePuzzle.game.endDate).toLocaleDateString()}
+                    </p>
                   </div>
                   <div>
-                    <span className="text-zinc-500 dark:text-zinc-400">Eval Before</span>
-                    <p className="font-medium">{formatEval(activePuzzle.evalBeforeCp)}</p>
+                    <span style={{ color: "#9e9b98" }}>Eval Before</span>
+                    <p className="font-medium" style={{ color: "#c8c5c2" }}>{formatEval(activePuzzle.evalBeforeCp)}</p>
                   </div>
                   <div>
-                    <span className="text-zinc-500 dark:text-zinc-400">Eval After</span>
-                    <p className="font-medium">{formatEval(activePuzzle.evalAfterCp)}</p>
+                    <span style={{ color: "#9e9b98" }}>Eval After</span>
+                    <p className="font-medium" style={{ color: "#c8c5c2" }}>{formatEval(activePuzzle.evalAfterCp)}</p>
                   </div>
                 </div>
               </div>
 
               {/* Checking spinner */}
               {checking && (
-                <div className="flex items-center gap-2 text-sm text-zinc-500">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-blue-600" />
+                <div className="flex items-center gap-2 text-sm px-1" style={{ color: "#9e9b98" }}>
+                  <div
+                    className="h-4 w-4 animate-spin rounded-full border-2"
+                    style={{ borderColor: "#4b4847", borderTopColor: "#81b64c" }}
+                  />
                   Checking...
                 </div>
               )}
 
-              {/* Result card */}
+              {/* Result */}
               {checkResult && (
                 <div
-                  className={`rounded-xl border p-6 space-y-2 ${
-                    checkResult.correct
-                      ? "border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30"
-                      : "border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30"
-                  }`}
+                  className="rounded-md p-5 space-y-3"
+                  style={{
+                    backgroundColor: checkResult.correct ? "#21371a" : "#3b1a1a",
+                    border: checkResult.correct ? "1px solid #3d6b2e" : "1px solid #6b2e2e",
+                  }}
                 >
                   <p
-                    className={`text-lg font-bold ${
-                      checkResult.correct
-                        ? "text-green-700 dark:text-green-400"
-                        : "text-red-700 dark:text-red-400"
-                    }`}
+                    className="text-xl font-bold"
+                    style={{ color: checkResult.correct ? "#81b64c" : "#e05252" }}
                   >
                     {checkResult.correct ? "Correct!" : "Incorrect"}
                   </p>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  <p className="text-sm" style={{ color: "#c8c5c2" }}>
                     Best move:{" "}
-                    <span className="font-mono font-medium text-zinc-900 dark:text-zinc-100">
+                    <span className="font-mono font-bold" style={{ color: "#fff" }}>
                       {checkResult.bestMove}
                     </span>
                   </p>
                   <button
                     onClick={() => setShowPlayedMove((v) => !v)}
-                    className="mt-1 text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
+                    className="text-sm font-semibold transition-colors"
+                    style={{ color: "#9e9b98" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = "#9e9b98")}
                   >
                     {showPlayedMove ? "Hide" : "Show"} played move{" "}
-                    <span className="font-mono text-red-600 dark:text-red-400">
+                    <span className="font-mono" style={{ color: "#e05252" }}>
                       {activePuzzle.playedMoveUci}
                     </span>
                   </button>
                 </div>
               )}
 
-              {/* Navigation buttons */}
+              {/* Action buttons */}
               {checkResult && (
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                   {!checkResult.correct && (
                     <button
                       onClick={() => {
@@ -425,23 +459,23 @@ export default function PuzzlesPage() {
                         setSelectedSquare(null);
                         setShowPlayedMove(false);
                       }}
-                      className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 transition-colors"
+                      className="flex-1 rounded-md px-4 py-2.5 text-sm font-bold transition-colors"
+                      style={{ backgroundColor: "#c27a30", color: "#fff" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#d48a3a")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#c27a30")}
                     >
                       Retry
                     </button>
                   )}
-                  <button
-                    onClick={() => setActivePuzzle(null)}
-                    className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-4 py-2 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                  >
-                    Back to List
-                  </button>
                   {activePuzzleIndex + 1 < puzzles.length && (
                     <button
                       onClick={goToNextPuzzle}
-                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+                      className="flex-1 rounded-md px-4 py-2.5 text-sm font-bold transition-colors"
+                      style={{ backgroundColor: "#81b64c", color: "#fff" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#95c95f")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#81b64c")}
                     >
-                      Next Puzzle &rarr;
+                      Next Puzzle
                     </button>
                   )}
                 </div>
@@ -453,33 +487,51 @@ export default function PuzzlesPage() {
     );
   }
 
-  // Puzzle List view
+  // ── Puzzle List View ──
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-        <div className="mx-auto max-w-4xl px-6 py-5 flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">Chess Analytics</h1>
-          <nav className="flex gap-4 text-sm font-medium">
-            <Link href="/" className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">Dashboard</Link>
-            <Link href="/puzzles" className="text-blue-600 dark:text-blue-400">Puzzles</Link>
-          </nav>
+    <div className="min-h-screen" style={{ backgroundColor: "#312e2b", color: "#fff" }}>
+      <header style={{ backgroundColor: "#272522", borderBottom: "1px solid #3d3a37" }}>
+        <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <Link href="/" className="text-xl font-bold" style={{ color: "#81b64c" }}>
+              Chess Analytics
+            </Link>
+            <nav className="flex gap-4 text-sm font-semibold">
+              <Link href="/" style={{ color: "#9e9b98" }} className="hover:text-white transition-colors">
+                Dashboard
+              </Link>
+              <Link href="/puzzles" style={{ color: "#81b64c" }}>
+                Puzzles
+              </Link>
+            </nav>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-8 space-y-8">
-        {/* Username + time category + submit */}
-        <form onSubmit={fetchPuzzles} className="flex gap-3">
+      <main className="mx-auto max-w-5xl px-4 py-8 space-y-6">
+        {/* Search bar */}
+        <form onSubmit={fetchPuzzles} className="flex gap-2">
           <input
             type="text"
-            placeholder="Enter chess.com username..."
+            placeholder="chess.com username..."
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-400"
+            className="flex-1 rounded-md px-4 py-2.5 text-sm outline-none"
+            style={{
+              backgroundColor: "#272522",
+              border: "1px solid #3d3a37",
+              color: "#fff",
+            }}
           />
           <select
             value={timeCategory}
             onChange={(e) => setTimeCategory(e.target.value)}
-            className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            className="rounded-md px-3 py-2.5 text-sm outline-none"
+            style={{
+              backgroundColor: "#272522",
+              border: "1px solid #3d3a37",
+              color: "#c8c5c2",
+            }}
           >
             {TIME_CATEGORIES.map((tc) => (
               <option key={tc.value} value={tc.value}>
@@ -490,7 +542,12 @@ export default function PuzzlesPage() {
           <select
             value={ratedFilter}
             onChange={(e) => setRatedFilter(e.target.value)}
-            className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            className="rounded-md px-3 py-2.5 text-sm outline-none"
+            style={{
+              backgroundColor: "#272522",
+              border: "1px solid #3d3a37",
+              color: "#c8c5c2",
+            }}
           >
             <option value="all">All Games</option>
             <option value="true">Rated</option>
@@ -499,7 +556,10 @@ export default function PuzzlesPage() {
           <button
             type="submit"
             disabled={loading || !username.trim()}
-            className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="rounded-md px-5 py-2.5 text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: "#81b64c", color: "#fff" }}
+            onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = "#95c95f"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#81b64c"; }}
           >
             {loading ? "Loading..." : "Load Puzzles"}
           </button>
@@ -508,42 +568,44 @@ export default function PuzzlesPage() {
         {/* Loading */}
         {loading && (
           <div className="flex flex-col items-center gap-3 py-16">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-300 border-t-blue-600" />
+            <div
+              className="h-8 w-8 animate-spin rounded-full border-4"
+              style={{ borderColor: "#3d3a37", borderTopColor: "#81b64c" }}
+            />
             {statusMsg && (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                {statusMsg}
-              </p>
+              <p className="text-sm" style={{ color: "#9e9b98" }}>{statusMsg}</p>
             )}
           </div>
         )}
 
         {/* Error */}
         {error && (
-          <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          <div
+            className="rounded-md px-4 py-3 text-sm"
+            style={{ backgroundColor: "#3b1a1a", border: "1px solid #6b2e2e", color: "#e05252" }}
+          >
             {error}
           </div>
         )}
 
         {/* Puzzle table */}
         {puzzles.length > 0 && !loading && (
-          <div className="space-y-4">
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <div className="space-y-3">
+            <p className="text-sm" style={{ color: "#9e9b98" }}>
               Showing {puzzles.length} of {total} puzzles for{" "}
-              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                {queriedUser}
-              </span>
+              <span className="font-bold" style={{ color: "#fff" }}>{queriedUser}</span>
             </p>
 
-            <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+            <div className="rounded-md overflow-hidden" style={{ backgroundColor: "#272522", border: "1px solid #3d3a37" }}>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-zinc-200 dark:border-zinc-800 text-left text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                    <th className="px-4 py-3">#</th>
-                    <th className="px-4 py-3">Game</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Time Control</th>
-                    <th className="px-4 py-3">Side</th>
-                    <th className="px-4 py-3 text-right">Eval Drop</th>
+                  <tr style={{ borderBottom: "1px solid #3d3a37" }}>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: "#7c7a77" }}>#</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: "#7c7a77" }}>Game</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: "#7c7a77" }}>Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: "#7c7a77" }}>Time</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: "#7c7a77" }}>Side</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: "#7c7a77" }}>Eval Drop</th>
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
@@ -551,37 +613,40 @@ export default function PuzzlesPage() {
                   {puzzles.map((puzzle, i) => (
                     <tr
                       key={puzzle.id}
-                      className="border-b border-zinc-100 dark:border-zinc-800 last:border-0 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                      className="transition-colors cursor-pointer"
+                      style={{ borderBottom: "1px solid #3d3a37" }}
+                      onClick={() => openPuzzle(puzzle, i)}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#3d3a37")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                     >
-                      <td className="px-4 py-2.5 text-zinc-400 dark:text-zinc-500">
-                        {i + 1}
-                      </td>
-                      <td className="px-4 py-2.5 font-mono text-zinc-500 dark:text-zinc-400">
-                        #{puzzle.game.id}
-                      </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-3" style={{ color: "#7c7a77" }}>{i + 1}</td>
+                      <td className="px-4 py-3 font-mono" style={{ color: "#9e9b98" }}>#{puzzle.game.id}</td>
+                      <td className="px-4 py-3" style={{ color: "#c8c5c2" }}>
                         {new Date(puzzle.game.endDate).toLocaleDateString()}
                       </td>
-                      <td className="px-4 py-2.5 text-zinc-500 dark:text-zinc-400">
-                        {puzzle.game.timeControl}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className="font-medium">
+                      <td className="px-4 py-3" style={{ color: "#9e9b98" }}>{puzzle.game.timeControl}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className="inline-block w-4 h-4 rounded-sm mr-1.5 align-middle"
+                          style={{
+                            backgroundColor: puzzle.sideToMove === "WHITE" ? "#f0d9b5" : "#b58863",
+                            border: "1px solid #4b4847",
+                          }}
+                        />
+                        <span className="font-medium align-middle" style={{ color: "#c8c5c2" }}>
                           {puzzle.sideToMove === "WHITE" ? "White" : "Black"}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-red-600 dark:text-red-400">
-                        {puzzle.deltaCp != null
-                          ? formatEval(puzzle.deltaCp)
-                          : "?"}
+                      <td className="px-4 py-3 text-right font-mono font-semibold" style={{ color: "#e05252" }}>
+                        {puzzle.deltaCp != null ? formatEval(puzzle.deltaCp) : "?"}
                       </td>
-                      <td className="px-4 py-2.5 text-right">
-                        <button
-                          onClick={() => openPuzzle(puzzle, i)}
-                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                      <td className="px-4 py-3 text-right">
+                        <span
+                          className="rounded px-3 py-1.5 text-xs font-bold"
+                          style={{ backgroundColor: "#81b64c", color: "#fff" }}
                         >
                           Solve
-                        </button>
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -591,16 +656,22 @@ export default function PuzzlesPage() {
           </div>
         )}
 
-        {/* Empty state */}
+        {/* Empty states */}
         {!puzzles.length && !loading && !error && queriedUser && (
-          <div className="text-center py-16 text-zinc-400 dark:text-zinc-500">
-            No puzzles found for {queriedUser}. Games need to be evaluated first (run the evaluate and detect-blunders jobs).
+          <div className="text-center py-16 text-sm" style={{ color: "#7c7a77" }}>
+            No puzzles found for {queriedUser}. Games need to be evaluated first.
           </div>
         )}
 
         {!puzzles.length && !loading && !error && !queriedUser && (
-          <div className="text-center py-16 text-zinc-400 dark:text-zinc-500">
-            Enter a chess.com username to import games and generate missed-tactics puzzles.
+          <div className="text-center py-20">
+            <div className="text-4xl mb-4">&#9819;</div>
+            <p className="text-lg font-bold mb-2" style={{ color: "#c8c5c2" }}>
+              Missed Tactics Trainer
+            </p>
+            <p className="text-sm" style={{ color: "#7c7a77" }}>
+              Enter a chess.com username to import games and generate puzzles from your mistakes.
+            </p>
           </div>
         )}
       </main>
