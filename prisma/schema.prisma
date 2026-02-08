@@ -43,6 +43,7 @@ model Game {
   user            User       @relation(fields: [userId], references: [id])
   endDate         DateTime
   timeControl     String
+  rated           Boolean    @default(true)
   result          Result
   pgn             String
   positionsParsed Boolean    @default(false)

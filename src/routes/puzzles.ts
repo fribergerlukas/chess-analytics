@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import prisma from "../lib/prisma";
+import { matchesCategory } from "../lib/timeControl";
+import { generateUserPuzzles } from "../services/puzzles";
 
 const router = Router();
 
@@ -13,8 +15,11 @@ function str(val: unknown): string {
  * Returns puzzles generated from the user's games.
  *
  * Query params:
- *   limit  — page size (default 20, max 100)
- *   offset — pagination offset (default 0)
+ *   limit        — page size (default 20, max 100)
+ *   offset       — pagination offset (default 0)
+ *   timeCategory — "bullet" | "blitz" | "rapid" (filter by game time control)
+ *   rated        — "true" | "false" (filter by rated/unrated; omit for all)
+ *   maxEvalBefore — max cp deficit before the move (default 300, filters hopeless positions)
  */
 router.get(
   "/users/:username/puzzles",
@@ -23,6 +28,9 @@ router.get(
       const username = str(req.params.username);
       const limit = Math.min(Number(req.query.limit) || 20, 100);
       const offset = Number(req.query.offset) || 0;
+      const timeCategory = typeof req.query.timeCategory === "string" ? req.query.timeCategory : undefined;
+      const ratedParam = typeof req.query.rated === "string" ? req.query.rated : undefined;
+      const maxEvalBefore = Number(req.query.maxEvalBefore) || 300;
 
       const user = await prisma.user.findFirst({
         where: { username: username.toLowerCase() },
@@ -33,8 +41,34 @@ router.get(
         return;
       }
 
-      const puzzles = await prisma.puzzle.findMany({
-        where: { userId: user.id },
+      // Build game-level filter for time category and rated
+      const gameFilter: Record<string, unknown> = {};
+
+      if (timeCategory) {
+        const allTCs = await prisma.game.findMany({
+          where: { userId: user.id },
+          select: { timeControl: true },
+          distinct: ["timeControl"],
+        });
+        const matching = allTCs
+          .map((g) => g.timeControl)
+          .filter((tc) => matchesCategory(tc, timeCategory.toLowerCase()));
+        gameFilter.timeControl = { in: matching };
+      }
+
+      if (ratedParam === "true") {
+        gameFilter.rated = true;
+      } else if (ratedParam === "false") {
+        gameFilter.rated = false;
+      }
+
+      const whereClause: Record<string, unknown> = {
+        userId: user.id,
+        ...(Object.keys(gameFilter).length > 0 ? { game: gameFilter } : {}),
+      };
+
+      const allPuzzles = await prisma.puzzle.findMany({
+        where: whereClause,
         select: {
           id: true,
           fen: true,
@@ -46,20 +80,50 @@ router.get(
           deltaCp: true,
           createdAt: true,
           game: {
-            select: { id: true, endDate: true, timeControl: true },
+            select: { id: true, endDate: true, timeControl: true, rated: true },
           },
         },
         orderBy: { createdAt: "desc" },
-        take: limit,
-        skip: offset,
       });
 
-      const total = await prisma.puzzle.count({
-        where: { userId: user.id },
+      // Filter out hopeless positions (where side to move was already losing badly)
+      const filtered = allPuzzles.filter((p) => {
+        if (p.evalBeforeCp == null) return true;
+        if (p.sideToMove === "WHITE") {
+          return p.evalBeforeCp >= -maxEvalBefore;
+        } else {
+          return p.evalBeforeCp <= maxEvalBefore;
+        }
       });
 
-      res.json({ puzzles, total, limit, offset });
+      const total = filtered.length;
+      const paged = filtered.slice(offset, offset + limit);
+
+      res.json({ puzzles: paged, total, limit, offset });
     } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /users/:username/puzzles/generate
+ *
+ * Generates puzzles from the user's evaluated games.
+ * Returns the number of puzzles created.
+ */
+router.post(
+  "/users/:username/puzzles/generate",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const username = str(req.params.username);
+      const created = await generateUserPuzzles(username);
+      res.json({ created });
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("not found")) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
       next(err);
     }
   }

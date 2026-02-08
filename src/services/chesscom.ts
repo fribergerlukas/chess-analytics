@@ -1,5 +1,6 @@
 import { Result } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { matchesCategory } from "../lib/timeControl";
 
 export async function validateUser(username: string): Promise<void> {
   const res = await fetch(
@@ -41,6 +42,7 @@ interface ChesscomGame {
   url: string;
   end_time: number;
   time_control: string;
+  rated?: boolean;
   pgn: string;
   white: ChesscomPlayer;
   black: ChesscomPlayer;
@@ -68,20 +70,6 @@ function computeResult(game: ChesscomGame, username: string): Result {
 // TODO: Add hook point for future Stockfish analysis after import
 
 const MAX_GAMES = 40;
-
-function baseTime(tc: string): number {
-  return parseInt(tc.split("+")[0], 10) || 0;
-}
-
-function matchesCategory(tc: string, category: string): boolean {
-  const b = baseTime(tc);
-  switch (category) {
-    case "bullet": return b < 180;
-    case "blitz": return b >= 180 && b < 600;
-    case "rapid": return b >= 600;
-    default: return false;
-  }
-}
 
 export async function importGames(username: string, timeCategory?: string): Promise<number> {
   await validateUser(username);
@@ -148,6 +136,7 @@ export async function importGames(username: string, timeCategory?: string): Prom
         userId: user.id,
         endDate: new Date(game.end_time * 1000),
         timeControl: game.time_control,
+        rated: game.rated ?? true,
         result: computeResult(game, username),
         pgn: game.pgn,
         accuracyWhite: game.accuracies?.white ?? null,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import Link from "next/link";
 
 interface StatsData {
   totalGames: number;
@@ -122,8 +123,12 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
       {/* Header */}
       <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-        <div className="mx-auto max-w-4xl px-6 py-5">
+        <div className="mx-auto max-w-4xl px-6 py-5 flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Chess Analytics</h1>
+          <nav className="flex gap-4 text-sm font-medium">
+            <Link href="/" className="text-blue-600 dark:text-blue-400">Dashboard</Link>
+            <Link href="/puzzles" className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors">Puzzles</Link>
+          </nav>
         </div>
       </header>
 

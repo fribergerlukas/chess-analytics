@@ -1,24 +1,11 @@
 import { Router, Request, Response, NextFunction } from "express";
 import prisma from "../lib/prisma";
+import { matchesCategory } from "../lib/timeControl";
 
 const router = Router();
 
 function str(val: unknown): string {
   return typeof val === "string" ? val : String(val);
-}
-
-function baseTime(tc: string): number {
-  return parseInt(tc.split("+")[0], 10) || 0;
-}
-
-function matchesCategory(tc: string, category: string): boolean {
-  const b = baseTime(tc);
-  switch (category) {
-    case "bullet": return b < 180;
-    case "blitz": return b >= 180 && b < 600;
-    case "rapid": return b >= 600;
-    default: return false;
-  }
 }
 
 // TODO: Add opening frequency stats endpoint
