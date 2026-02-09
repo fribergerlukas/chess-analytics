@@ -1,6 +1,9 @@
-import type { Metadata } from "next";
+"use client";
+
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { UserProvider } from "./UserContext";
+import Sidebar from "./Sidebar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -12,11 +15,6 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Chess Analytics",
-  description: "Chess game statistics dashboard",
-};
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -24,10 +22,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <title>Chess Analytics</title>
+        <meta name="description" content="Chess game statistics dashboard" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <UserProvider>
+          <Sidebar />
+          <div style={{ marginLeft: 230 }}>{children}</div>
+        </UserProvider>
       </body>
     </html>
   );
