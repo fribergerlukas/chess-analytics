@@ -8,6 +8,11 @@ export interface EvalResult {
   pv: string;
 }
 
+// TODO: Add MultiPV support for narrowness constraint in resilience puzzles.
+// evaluateMultiPv(fen, depth, numPv) → MultiPvLine[]
+// This would enable checking that only 1-2 acceptable defensive moves exist,
+// which is a key quality signal for resilience puzzles.
+
 export class StockfishEngine {
   private process: ChildProcessWithoutNullStreams | null = null;
   private buffer = "";

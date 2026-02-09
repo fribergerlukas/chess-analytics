@@ -1,7 +1,28 @@
 import { Side } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { analyzePv } from "./puzzlePv";
+import { classifyPuzzle } from "./puzzleClassification";
 
 const MISTAKE_THRESHOLD = 150;
+
+/**
+ * Parse a PGN header value.
+ */
+function pgnHeader(pgn: string, header: string): string | null {
+  const match = pgn.match(new RegExp(`\\[${header} "([^"]*)"\\]`));
+  return match ? match[1] : null;
+}
+
+/**
+ * Determine which side the user played from the PGN.
+ */
+function getUserSide(pgn: string, username: string): Side | null {
+  const white = pgnHeader(pgn, "White");
+  const black = pgnHeader(pgn, "Black");
+  if (white && white.toLowerCase() === username.toLowerCase()) return Side.WHITE;
+  if (black && black.toLowerCase() === username.toLowerCase()) return Side.BLACK;
+  return null;
+}
 
 /**
  * Generate puzzles for a single game.
@@ -9,13 +30,15 @@ const MISTAKE_THRESHOLD = 150;
  * - The position has been evaluated (eval is not null)
  * - cpLoss >= MISTAKE_THRESHOLD (the player made a significant mistake)
  * - bestMoveUci exists and differs from the played move
+ * - The side to move matches the user's side in the game
  * - No puzzle already exists for this user+position
  *
  * Returns the number of puzzles created.
  */
 export async function generateGamePuzzles(
   gameId: number,
-  userId: number
+  userId: number,
+  userSide?: Side
 ): Promise<number> {
   const positions = await prisma.position.findMany({
     where: {
@@ -23,6 +46,7 @@ export async function generateGamePuzzles(
       eval: { not: null },
       cpLoss: { gte: MISTAKE_THRESHOLD },
       bestMoveUci: { not: null },
+      ...(userSide ? { sideToMove: userSide } : {}),
     },
     select: {
       id: true,
@@ -63,6 +87,18 @@ export async function generateGamePuzzles(
         ? evalAfterCp - evalBeforeCp
         : null;
 
+    const pvResult = analyzePv(pos.fen, pos.pv || "", evalBeforeCp);
+
+    // Three-axis classification: category (why), severity (how bad), labels (what)
+    const classification = classifyPuzzle(
+      evalBeforeCp,
+      evalAfterCp,
+      pos.sideToMove,
+      pos.fen,
+      pos.bestMoveUci!,
+      pvResult.pvMoves
+    );
+
     await prisma.puzzle.create({
       data: {
         userId,
@@ -73,9 +109,14 @@ export async function generateGamePuzzles(
         playedMoveUci: pos.moveUci,
         bestMoveUci: pos.bestMoveUci!,
         pv: pos.pv || "",
+        pvMoves: pvResult.pvMoves,
+        requiredMoves: pvResult.requiredMoves,
         evalBeforeCp,
         evalAfterCp,
         deltaCp,
+        category: classification.category,
+        severity: classification.severity,
+        labels: classification.labels,
       },
     });
 
@@ -106,21 +147,22 @@ export async function generateUserPuzzles(username: string): Promise<number> {
         some: { eval: { not: null }, cpLoss: { gte: MISTAKE_THRESHOLD } },
       },
     },
-    select: { id: true },
+    select: { id: true, pgn: true },
     orderBy: { endDate: "desc" },
   });
 
   let totalCreated = 0;
 
-  for (const { id } of games) {
+  for (const game of games) {
     try {
-      const count = await generateGamePuzzles(id, user.id);
+      const userSide = getUserSide(game.pgn, username) ?? undefined;
+      const count = await generateGamePuzzles(game.id, user.id, userSide);
       if (count > 0) {
-        console.log(`Game ${id}: ${count} puzzle(s) created`);
+        console.log(`Game ${game.id}: ${count} puzzle(s) created`);
         totalCreated += count;
       }
     } catch (err) {
-      console.error(`Game ${id}: failed to generate puzzles —`, err);
+      console.error(`Game ${game.id}: failed to generate puzzles —`, err);
     }
   }
 

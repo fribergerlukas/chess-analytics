@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useUserContext } from "./UserContext";
+import PlayerCard, { ArenaStatsData } from "./PlayerCard";
 
 interface StatsData {
   totalGames: number;
@@ -29,17 +30,32 @@ interface GameData {
   accuracyBlack: number | null;
 }
 
+interface ProfileData {
+  title?: string;
+  countryCode?: string;
+}
+
+interface CardData {
+  timeControl: "bullet" | "blitz" | "rapid";
+  chessRating: number;
+  peakRating?: number;
+  arenaStats: ArenaStatsData;
+}
+
 const API_BASE = "http://localhost:3000";
+
+const TIME_CONTROLS: ("bullet" | "blitz" | "rapid")[] = ["bullet", "blitz", "rapid"];
 
 export default function Home() {
   const { queriedUser, timeCategory, ratedFilter, searchTrigger } = useUserContext();
 
   const [stats, setStats] = useState<StatsData | null>(null);
   const [games, setGames] = useState<GameData[]>([]);
-  const [rating, setRating] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState("");
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [cards, setCards] = useState<CardData[]>([]);
 
   const lastTriggerRef = useRef(0);
 
@@ -63,10 +79,12 @@ export default function Home() {
     setError("");
     setStats(null);
     setGames([]);
-    setRating(null);
+    setProfile(null);
+    setCards([]);
     setStatusMsg("Importing games from chess.com...");
 
     try {
+      // Step 1: Import games (unchanged)
       const importBody: Record<string, string | boolean> = { username: user, timeCategory };
       if (ratedFilter === "true") importBody.rated = true;
       else if (ratedFilter === "false") importBody.rated = false;
@@ -80,19 +98,99 @@ export default function Home() {
         throw new Error(body?.error || `Import failed (${importRes.status})`);
       }
 
+      // Step 2: Fetch chess.com profile + ratings in parallel
+      setStatusMsg("Fetching player profile...");
+      let profileData: ProfileData = {};
+      let ratings: Record<string, number> = {};
+      let peakRatings: Record<string, number> = {};
+
       try {
-        const ratingRes = await fetch(
-          `https://api.chess.com/pub/player/${encodeURIComponent(user)}/stats`
-        );
-        if (ratingRes.ok) {
-          const d = await ratingRes.json();
-          const key = `chess_${timeCategory}`;
-          setRating(d[key]?.last?.rating ?? null);
+        const [profileRes, ratingsRes] = await Promise.all([
+          fetch(`https://api.chess.com/pub/player/${encodeURIComponent(user)}`),
+          fetch(`https://api.chess.com/pub/player/${encodeURIComponent(user)}/stats`),
+        ]);
+
+        if (profileRes.ok) {
+          const p = await profileRes.json();
+          profileData.title = p.title || undefined;
+          // Country comes as a URL like "https://api.chess.com/pub/country/US"
+          if (p.country) {
+            const parts = p.country.split("/");
+            profileData.countryCode = parts[parts.length - 1];
+          }
+        }
+
+        if (ratingsRes.ok) {
+          const d = await ratingsRes.json();
+          for (const tc of TIME_CONTROLS) {
+            const key = `chess_${tc}`;
+            if (d[key]?.last?.rating) {
+              ratings[tc] = d[key].last.rating;
+            }
+            if (d[key]?.best?.rating) {
+              peakRatings[tc] = d[key].best.rating;
+            }
+          }
         }
       } catch {
-        // Rating fetch is non-critical
+        // Profile/ratings fetch is non-critical
       }
 
+      setProfile(profileData);
+
+      // Step 2b: Import games for other time controls that have ratings (so arena cards work)
+      const cardTimeControls = TIME_CONTROLS.filter((tc) => ratings[tc]);
+      const otherTCs = cardTimeControls.filter((tc) => tc !== timeCategory);
+      if (otherTCs.length > 0) {
+        setStatusMsg("Importing games for all time controls...");
+        await Promise.all(
+          otherTCs.map(async (tc) => {
+            const body: Record<string, string | boolean> = { username: user, timeCategory: tc };
+            if (ratedFilter === "true") body.rated = true;
+            else if (ratedFilter === "false") body.rated = false;
+            try {
+              await fetch(`${API_BASE}/import/chesscom`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+              });
+            } catch {
+              // Non-critical — card just won't appear for this TC
+            }
+          })
+        );
+      }
+
+      // Step 3: For each time control with a rating, fetch arena stats in parallel
+      setStatusMsg("Building arena cards...");
+
+      if (cardTimeControls.length > 0) {
+        const arenaPromises = cardTimeControls.map(async (tc) => {
+          const params = new URLSearchParams();
+          params.set("timeCategory", tc);
+          params.set("chessRating", String(ratings[tc]));
+          if (profileData.title) params.set("title", profileData.title);
+          const url = `${API_BASE}/users/${encodeURIComponent(user)}/arena-stats?${params}`;
+          try {
+            const res = await fetch(url);
+            if (!res.ok) return null;
+            const arenaStats: ArenaStatsData = await res.json();
+            return {
+              timeControl: tc,
+              chessRating: ratings[tc],
+              peakRating: peakRatings[tc],
+              arenaStats,
+            } as CardData;
+          } catch {
+            return null;
+          }
+        });
+
+        const cardResults = await Promise.all(arenaPromises);
+        setCards(cardResults.filter((c): c is CardData => c !== null));
+      }
+
+      // Step 4: Fetch stats + games for the selected time category (existing behavior)
       setStatusMsg("Fetching stats...");
       const params = new URLSearchParams();
       params.set("timeCategory", timeCategory);
@@ -151,6 +249,24 @@ export default function Home() {
           </div>
         )}
 
+        {/* Player Cards */}
+        {cards.length > 0 && !loading && (
+          <div className="flex justify-center gap-6 flex-wrap">
+            {cards.map((card) => (
+              <PlayerCard
+                key={card.timeControl}
+                username={queriedUser}
+                timeControl={card.timeControl}
+                chessRating={card.chessRating}
+                peakRating={card.peakRating}
+                title={profile?.title}
+                countryCode={profile?.countryCode}
+                arenaStats={card.arenaStats}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Stats cards */}
         {stats && !loading && (
           <div className="space-y-8">
@@ -158,11 +274,6 @@ export default function Home() {
               <p style={{ color: "#d1cfcc", fontSize: 15 }}>
                 Report for <span className="font-extrabold" style={{ color: "#fff" }}>{queriedUser}</span> — last {stats.totalGames} {timeCategory} games
               </p>
-              {rating != null && (
-                <p style={{ color: "#d1cfcc", fontSize: 15 }}>
-                  Rating: <span className="font-extrabold" style={{ color: "#fff" }}>{rating}</span>
-                </p>
-              )}
             </div>
 
             {/* Total games */}

@@ -3,6 +3,7 @@ import cors from "cors";
 import importRouter from "./routes/import";
 import gamesRouter from "./routes/games";
 import puzzlesRouter from "./routes/puzzles";
+import arenaRouter from "./routes/arena";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,6 +14,7 @@ app.use(express.json());
 app.use("/import", importRouter);
 app.use(gamesRouter);
 app.use(puzzlesRouter);
+app.use(arenaRouter);
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err.stack);

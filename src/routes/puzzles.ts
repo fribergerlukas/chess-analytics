@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import prisma from "../lib/prisma";
 import { matchesCategory } from "../lib/timeControl";
 import { generateUserPuzzles } from "../services/puzzles";
+import { getJobStatus } from "../services/backgroundEval";
 
 const router = Router();
 
@@ -19,6 +20,8 @@ function str(val: unknown): string {
  *   offset       — pagination offset (default 0)
  *   timeCategory — "bullet" | "blitz" | "rapid" (filter by game time control)
  *   rated        — "true" | "false" (filter by rated/unrated; omit for all)
+ *   minMoves     — minimum required user moves (default 1; use 2 for multi-move only)
+ *   category     — "resilience" | "capitalization" (filter by puzzle category)
  *   maxEvalBefore — max cp deficit before the move (default 300, filters hopeless positions)
  */
 router.get(
@@ -30,6 +33,9 @@ router.get(
       const offset = Number(req.query.offset) || 0;
       const timeCategory = typeof req.query.timeCategory === "string" ? req.query.timeCategory : undefined;
       const ratedParam = typeof req.query.rated === "string" ? req.query.rated : undefined;
+      const minMoves = Number(req.query.minMoves) || 1;
+      const categoryParam = typeof req.query.category === "string" ? req.query.category : undefined;
+      const severityParam = typeof req.query.severity === "string" ? req.query.severity : undefined;
       const maxEvalBefore = Number(req.query.maxEvalBefore) || 300;
 
       const user = await prisma.user.findFirst({
@@ -65,6 +71,9 @@ router.get(
       const whereClause: Record<string, unknown> = {
         userId: user.id,
         ...(Object.keys(gameFilter).length > 0 ? { game: gameFilter } : {}),
+        ...(minMoves > 1 ? { requiredMoves: { gte: minMoves } } : {}),
+        ...(categoryParam ? { category: categoryParam } : {}),
+        ...(severityParam ? { severity: severityParam } : {}),
       };
 
       const allPuzzles = await prisma.puzzle.findMany({
@@ -78,6 +87,10 @@ router.get(
           evalBeforeCp: true,
           evalAfterCp: true,
           deltaCp: true,
+          requiredMoves: true,
+          category: true,
+          severity: true,
+          labels: true,
           createdAt: true,
           game: {
             select: { id: true, endDate: true, timeControl: true, rated: true },
@@ -109,8 +122,8 @@ router.get(
 /**
  * POST /users/:username/puzzles/generate
  *
- * Generates puzzles from the user's evaluated games.
- * Returns the number of puzzles created.
+ * Generates puzzles from already-evaluated games (fast).
+ * Stockfish evaluation runs in the background after import.
  */
 router.post(
   "/users/:username/puzzles/generate",
@@ -118,7 +131,15 @@ router.post(
     try {
       const username = str(req.params.username);
       const created = await generateUserPuzzles(username);
-      res.json({ created });
+
+      // Include background eval status so frontend knows if more are coming
+      const job = getJobStatus(username);
+      res.json({
+        created,
+        analyzing: job?.status === "running",
+        analyzedGames: job?.completedGames ?? 0,
+        totalGames: job?.totalGames ?? 0,
+      });
     } catch (err) {
       if (err instanceof Error && err.message.includes("not found")) {
         res.status(404).json({ error: err.message });
@@ -126,6 +147,29 @@ router.post(
       }
       next(err);
     }
+  }
+);
+
+/**
+ * GET /users/:username/puzzles/status
+ *
+ * Returns the background evaluation status for this user.
+ */
+router.get(
+  "/users/:username/puzzles/status",
+  async (req: Request, res: Response) => {
+    const username = str(req.params.username);
+    const job = getJobStatus(username);
+    if (!job) {
+      res.json({ status: "idle", analyzedGames: 0, totalGames: 0, puzzlesCreated: 0 });
+      return;
+    }
+    res.json({
+      status: job.status,
+      analyzedGames: job.completedGames,
+      totalGames: job.totalGames,
+      puzzlesCreated: job.puzzlesCreated,
+    });
   }
 );
 
@@ -148,7 +192,10 @@ router.get(
         where: { id },
         include: {
           game: {
-            select: { id: true, endDate: true, timeControl: true },
+            select: { id: true, endDate: true, timeControl: true, externalId: true, pgn: true },
+          },
+          position: {
+            select: { ply: true },
           },
         },
       });
@@ -158,7 +205,41 @@ router.get(
         return;
       }
 
-      res.json(puzzle);
+      // Parse player names and Elo from PGN headers
+      const pgnHeader = (header: string): string | null => {
+        const match = puzzle.game.pgn.match(new RegExp(`\\[${header} "([^"]*)"\\]`));
+        return match ? match[1] : null;
+      };
+
+      const players = {
+        white: pgnHeader("White"),
+        black: pgnHeader("Black"),
+        whiteElo: pgnHeader("WhiteElo"),
+        blackElo: pgnHeader("BlackElo"),
+      };
+
+      // Fetch the previous position to get the "setup move"
+      // (the opponent's move that led to the puzzle position)
+      let setupFen: string | null = null;
+      let setupMoveUci: string | null = null;
+
+      if (puzzle.position.ply > 0) {
+        const prevPosition = await prisma.position.findFirst({
+          where: {
+            gameId: puzzle.gameId,
+            ply: puzzle.position.ply - 1,
+          },
+          select: { fen: true, moveUci: true },
+        });
+        if (prevPosition) {
+          setupFen = prevPosition.fen;
+          setupMoveUci = prevPosition.moveUci;
+        }
+      }
+
+      const { position: _pos, game: gameData, ...puzzleData } = puzzle;
+      const { pgn: _pgn, ...gameInfo } = gameData;
+      res.json({ ...puzzleData, game: gameInfo, players, setupFen, setupMoveUci });
     } catch (err) {
       next(err);
     }
@@ -182,15 +263,23 @@ router.post(
         return;
       }
 
-      const { move } = req.body;
+      const { move, plyIndex = 0 } = req.body;
       if (typeof move !== "string" || !move.trim()) {
         res.status(400).json({ error: "move is required (UCI format)" });
         return;
       }
 
+      const ply = Number(plyIndex);
+
       const puzzle = await prisma.puzzle.findUnique({
         where: { id },
-        select: { bestMoveUci: true, pv: true, fen: true },
+        select: {
+          bestMoveUci: true,
+          pv: true,
+          fen: true,
+          pvMoves: true,
+          requiredMoves: true,
+        },
       });
 
       if (!puzzle) {
@@ -198,12 +287,38 @@ router.post(
         return;
       }
 
-      const correct = move.trim().toLowerCase() === puzzle.bestMoveUci.toLowerCase();
+      const userMove = move.trim().toLowerCase();
+
+      // Multi-move: validate against pvMoves at the given ply index
+      // User moves are at even indices (0, 2, 4, ...)
+      let expectedMove: string;
+      if (puzzle.pvMoves.length > 0 && ply < puzzle.pvMoves.length) {
+        expectedMove = puzzle.pvMoves[ply].toLowerCase();
+      } else {
+        // Legacy fallback: single-move puzzle
+        expectedMove = puzzle.bestMoveUci.toLowerCase();
+      }
+
+      const correct = userMove === expectedMove;
+
+      // Determine if this was the final user move
+      const totalPlies = puzzle.pvMoves.length;
+      const isLastUserMove = ply + 1 >= totalPlies;
+      const completed = correct && isLastUserMove;
+
+      // Opponent's reply is the next ply (ply + 1) if correct and not completed
+      let opponentMove: string | undefined;
+      if (correct && !completed && ply + 1 < totalPlies) {
+        opponentMove = puzzle.pvMoves[ply + 1];
+      }
 
       res.json({
         correct,
-        bestMove: puzzle.bestMoveUci,
+        bestMove: expectedMove,
+        opponentMove,
+        completed,
         pv: puzzle.pv,
+        requiredMoves: puzzle.requiredMoves,
       });
     } catch (err) {
       next(err);

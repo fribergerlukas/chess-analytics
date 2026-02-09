@@ -71,7 +71,7 @@ function computeResult(game: ChesscomGame, username: string): Result {
 
 const MAX_GAMES = 40;
 
-export async function importGames(username: string, timeCategory?: string): Promise<number> {
+export async function importGames(username: string, timeCategory?: string, rated?: boolean): Promise<number> {
   await validateUser(username);
 
   const user = await prisma.user.upsert({
@@ -95,18 +95,40 @@ export async function importGames(username: string, timeCategory?: string): Prom
       if (timeCategory && !matchesCategory(games[j].time_control, timeCategory)) {
         continue;
       }
+      // Skip games that don't match the rated filter
+      if (rated !== undefined && (games[j].rated ?? true) !== rated) {
+        continue;
+      }
       recentGames.push(games[j]);
     }
   }
 
-  // Clear old games for this user so only the latest 40 are kept
+  // Clear old games for this user, scoped to the same time category only
   const keepIds = recentGames.map((g) => g.url);
-  await prisma.position.deleteMany({
-    where: { game: { userId: user.id, externalId: { notIn: keepIds } } },
-  });
-  await prisma.game.deleteMany({
-    where: { userId: user.id, externalId: { notIn: keepIds } },
-  });
+
+  let deleteFilter: Record<string, unknown> = { userId: user.id, externalId: { notIn: keepIds } };
+
+  if (timeCategory) {
+    // Only delete games of the same time category, preserve others
+    const allTCs = await prisma.game.findMany({
+      where: { userId: user.id },
+      select: { timeControl: true },
+      distinct: ["timeControl"],
+    });
+    const matchingTCs = allTCs
+      .map((g) => g.timeControl)
+      .filter((tc) => matchesCategory(tc, timeCategory));
+    deleteFilter = { ...deleteFilter, timeControl: { in: matchingTCs } };
+  }
+
+  if (rated !== undefined) {
+    deleteFilter = { ...deleteFilter, rated };
+  }
+
+  // Delete puzzles, positions, then games (respecting foreign keys)
+  await prisma.puzzle.deleteMany({ where: { game: deleteFilter } });
+  await prisma.position.deleteMany({ where: { game: deleteFilter } });
+  await prisma.game.deleteMany({ where: deleteFilter });
 
   let imported = 0;
 

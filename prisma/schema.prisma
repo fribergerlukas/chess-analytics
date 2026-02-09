@@ -88,9 +88,14 @@ model Puzzle {
   playedMoveUci String
   bestMoveUci   String
   pv            String
-  evalBeforeCp  Int?
-  evalAfterCp   Int?
-  deltaCp       Int?
+  pvMoves       String[]  @default([])
+  requiredMoves Int       @default(1)
+  evalBeforeCp  Int?      // Position eval from white's perspective (= evalAfterBest, since engine assumes optimal play)
+  evalAfterCp   Int?      // Eval after the played (wrong) move, from white's perspective
+  deltaCp       Int?      // evalAfterCp - evalBeforeCp (negative for white mistakes, positive for black mistakes)
+  category      String?   // WHY: resilience | advantage_capitalisation | opportunity_creation | precision_only_move
+  severity      String?   // HOW BAD: mistake | blunder | missed_win | missed_save
+  labels        String[]  @default([]) // WHAT: tactical motifs (fork, pin, sacrifice, etc.)
   createdAt     DateTime @default(now())
 
   @@unique([userId, positionId])

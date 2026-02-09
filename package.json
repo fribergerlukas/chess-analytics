@@ -12,7 +12,9 @@
     "parse-positions": "ts-node src/jobs/parse-positions.ts",
     "evaluate": "ts-node src/jobs/evaluate-positions.ts",
     "detect-blunders": "ts-node src/jobs/detect-blunders.ts",
-    "compute-accuracy": "ts-node src/jobs/compute-accuracy.ts"
+    "compute-accuracy": "ts-node src/jobs/compute-accuracy.ts",
+    "backfill-puzzles": "ts-node src/jobs/backfill-puzzle-pv.ts",
+    "backfill-classification": "ts-node src/jobs/backfill-classification.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.3.0",

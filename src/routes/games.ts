@@ -15,18 +15,20 @@ function str(val: unknown): string {
  * GET /users/:username/games
  *
  * Query params:
- *   source  — filter by platform (e.g. "chesscom", "lichess")
- *   from    — ISO date string, games ending on or after this date
- *   to      — ISO date string, games ending on or before this date
- *   limit   — page size (default 20, max 100)
- *   offset  — pagination offset (default 0)
+ *   source       — filter by platform (e.g. "chesscom", "lichess")
+ *   from         — ISO date string, games ending on or after this date
+ *   to           — ISO date string, games ending on or before this date
+ *   timeCategory — filter by category: "bullet", "blitz", or "rapid"
+ *   rated        — "true" | "false" (filter by rated/unrated; omit for all)
+ *   limit        — page size (default 20, max 100)
+ *   offset       — pagination offset (default 0)
  */
 router.get(
   "/users/:username/games",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const username = str(req.params.username);
-      const { source, from, to } = req.query;
+      const { source, from, to, rated, timeCategory } = req.query;
       const limit = Math.min(Number(req.query.limit) || 20, 100);
       const offset = Number(req.query.offset) || 0;
 
@@ -48,9 +50,28 @@ router.get(
       if (from) dateFilter.gte = new Date(String(from));
       if (to) dateFilter.lte = new Date(String(to));
 
+      const ratedFilter: Record<string, unknown> = {};
+      if (rated === "true") ratedFilter.rated = true;
+      else if (rated === "false") ratedFilter.rated = false;
+
+      let timeControlFilter: Record<string, unknown> = {};
+      if (typeof timeCategory === "string") {
+        const allTCs = await prisma.game.findMany({
+          where: { userId: user.id },
+          select: { timeControl: true },
+          distinct: ["timeControl"],
+        });
+        const matching = allTCs
+          .map((g) => g.timeControl)
+          .filter((tc) => matchesCategory(tc, timeCategory.toLowerCase()));
+        timeControlFilter = { timeControl: { in: matching } };
+      }
+
       const games = await prisma.game.findMany({
         where: {
           userId: user.id,
+          ...ratedFilter,
+          ...timeControlFilter,
           ...(Object.keys(dateFilter).length > 0
             ? { endDate: dateFilter }
             : {}),
@@ -72,6 +93,8 @@ router.get(
       const total = await prisma.game.count({
         where: {
           userId: user.id,
+          ...ratedFilter,
+          ...timeControlFilter,
           ...(Object.keys(dateFilter).length > 0
             ? { endDate: dateFilter }
             : {}),
@@ -108,13 +131,14 @@ router.get(
  *   source       — filter by platform (e.g. "chesscom", "lichess")
  *   timeControl  — filter by exact time control string (e.g. "180", "300+3")
  *   timeCategory — filter by category: "bullet", "blitz", or "rapid"
+ *   rated        — "true" | "false" (filter by rated/unrated; omit for all)
  */
 router.get(
   "/users/:username/stats",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const username = str(req.params.username);
-      const { source, timeControl, timeCategory } = req.query;
+      const { source, timeControl, timeCategory, rated } = req.query;
 
       const platform = typeof source === "string" ? source.toLowerCase() : undefined;
 
@@ -145,9 +169,14 @@ router.get(
         timeControlFilter = { timeControl: { in: matching } };
       }
 
+      const ratedFilter: Record<string, unknown> = {};
+      if (rated === "true") ratedFilter.rated = true;
+      else if (rated === "false") ratedFilter.rated = false;
+
       const baseWhere = {
         userId: user.id,
         ...timeControlFilter,
+        ...ratedFilter,
       };
 
       // Always limit to the 40 most recent games

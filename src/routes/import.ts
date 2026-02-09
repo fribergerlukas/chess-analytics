@@ -2,12 +2,15 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { importGames } from "../services/chesscom";
 import { parseAllUnparsed } from "../services/positions";
+import prisma from "../lib/prisma";
+import { startBackgroundEval } from "../services/backgroundEval";
 
 const router = Router();
 
 const chesscomImportSchema = z.object({
   username: z.string().min(1, "Username is required"),
   timeCategory: z.enum(["bullet", "blitz", "rapid"]).optional(),
+  rated: z.boolean().optional(),
 });
 
 // TODO: Add Lichess import route (POST /lichess)
@@ -18,12 +21,20 @@ router.post(
   "/chesscom",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { username, timeCategory } = chesscomImportSchema.parse(req.body);
-      const imported = await importGames(username, timeCategory);
+      const { username, timeCategory, rated } = chesscomImportSchema.parse(req.body);
+      const imported = await importGames(username, timeCategory, rated);
 
       let parsed = 0;
       if (imported > 0) {
         parsed = await parseAllUnparsed();
+      }
+
+      // Kick off background Stockfish evaluation (non-blocking)
+      const user = await prisma.user.findFirst({
+        where: { username: username.toLowerCase() },
+      });
+      if (user) {
+        startBackgroundEval(user.id, username);
       }
 
       res.json({ imported, parsed });
