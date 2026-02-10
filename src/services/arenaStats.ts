@@ -229,30 +229,6 @@ const EXPECTED_OPENING_EVAL_CURVE: RatePoint[] = [
 ];
 
 
-// Expected positional success rates by rating (% of quiet positions with cpLoss < 50)
-const EXPECTED_POSITIONAL_SUCCESS_CURVE: RatePoint[] = [
-  { rating: 0,    rate: 55 },
-  { rating: 600,  rate: 60 },
-  { rating: 800,  rate: 64 },
-  { rating: 1000, rate: 68 },
-  { rating: 1100, rate: 70 },
-  { rating: 1200, rate: 72 },
-  { rating: 1300, rate: 74 },
-  { rating: 1400, rate: 76 },
-  { rating: 1500, rate: 78 },
-  { rating: 1600, rate: 80 },
-  { rating: 1700, rate: 82 },
-  { rating: 1800, rate: 83 },
-  { rating: 1900, rate: 84 },
-  { rating: 2000, rate: 86 },
-  { rating: 2100, rate: 87 },
-  { rating: 2200, rate: 88 },
-  { rating: 2300, rate: 89 },
-  { rating: 2400, rate: 90 },
-  { rating: 2500, rate: 91 },
-  { rating: 3000, rate: 93 },
-  { rating: 3500, rate: 95 },
-];
 
 // Expected missed win rates by rating
 // Missed win = winning (eval >= 150) AND cpLoss >= 100
@@ -412,6 +388,23 @@ function isEndgamePosition(fen: string): boolean {
 }
 
 /**
+ * Calculate material balance from FEN. Returns (white material - black material) in pawn units.
+ * Q=9, R=5, B=3, N=3, P=1
+ */
+function getMaterialBalance(fen: string): number {
+  const boardPart = fen.split(" ")[0];
+  const values: Record<string, number> = { q: 9, r: 5, b: 3, n: 3, p: 1 };
+  let balance = 0;
+  for (const ch of boardPart) {
+    const lower = ch.toLowerCase();
+    if (values[lower]) {
+      balance += ch === ch.toUpperCase() ? values[lower] : -values[lower];
+    }
+  }
+  return balance;
+}
+
+/**
  * Classify a position into applicable categories (overlapping where allowed).
  * - Tactics: applies across ALL phases (opening, middlegame, endgame)
  * - Positional: applies in middlegame and endgame (not opening)
@@ -436,8 +429,9 @@ function classifyPosition(pos: PositionRow, playerSideIsWhite: boolean): Categor
   // Tactics: captures, checks, forcing — applies in ALL phases
   if (isTacticalPosition(pos)) categories.push("tactics");
 
-  // Positional: quiet balanced moves — applies in middlegame and endgame (not opening)
-  if (!isOpening && !isTacticalPosition(pos) && playerEval > -150 && playerEval < 150) {
+  // Positional: quiet moves with near-equal material — applies from ply 20 onwards
+  // Material within ±1 pawn, no captures/checks (overlaps late opening, middlegame, endgame)
+  if (pos.ply >= 20 && !isTacticalPosition(pos) && Math.abs(getMaterialBalance(pos.fen)) <= 1) {
     categories.push("positional");
   }
 
@@ -502,6 +496,14 @@ export function computeArenaStats(
   let endgameLosingTotal = 0;     // endgame positions where eval <= -150
   let endgameLosingSaved = 0;     // drew or won from losing endgame
 
+  // Tactics-specific counters (difficulty-weighted cpLoss)
+  let tacticsWeightedCpLoss = 0;   // sum of (cpLoss * difficulty weight)
+  let tacticsTotalWeight = 0;       // sum of difficulty weights
+
+  // Positional-specific counters (cpLoss magnitude, no difficulty weighting)
+  let positionalTotalCpLoss = 0;
+  let positionalCount = 0;
+
   // Attacking-specific counters
   let broadMissedWins = 0;        // winning (eval >= 150) AND cpLoss >= 100
   let winningTotal = 0;           // all positions where eval >= 150
@@ -533,6 +535,24 @@ export function computeArenaStats(
       if (pos.cpLoss < 50) endgameSuccess++;
       if (playerEvalCp >= 150) endgameWinningTotal++;
       if (playerEvalCp <= -150) endgameLosingTotal++;
+    }
+
+    // Tactics-specific tracking (difficulty-weighted by PV length)
+    if (categories.includes("tactics")) {
+      const pvMoves = pos.pv ? pos.pv.trim().split(/\s+/) : [];
+      // sqrt scaling: PV 1 → 1.0, PV 4 → 2.0, PV 9 → 3.0 (gentle curve)
+      const difficulty = Math.sqrt(Math.max(pvMoves.length, 1));
+      // Cap cpLoss at 300 so single huge blunders don't dominate the average
+      const cappedCpLoss = Math.min(pos.cpLoss, 300);
+      tacticsWeightedCpLoss += cappedCpLoss * difficulty;
+      tacticsTotalWeight += difficulty;
+    }
+
+    // Positional-specific tracking (cpLoss magnitude, capped)
+    if (categories.includes("positional")) {
+      const cappedCpLoss = Math.min(pos.cpLoss, 300);
+      positionalTotalCpLoss += cappedCpLoss;
+      positionalCount++;
     }
 
     // Defending-specific tracking
@@ -795,22 +815,29 @@ export function computeArenaStats(
     0.30 * egSaveRate;
   categoryData["endgame"].successRate = endgameScore;
 
-  // ── Tactics score (raw success rate, no rating benchmark) ──
-  // Tactics is a raw skill — either you find the capture/check or you don't
-  const tacticsScore = categoryCounts["tactics"].total > 0
-    ? categoryCounts["tactics"].success / categoryCounts["tactics"].total
-    : 0.5;
-  categoryData["tactics"].successRate = tacticsScore;
+  // ── Tactics score (difficulty-weighted cpLoss magnitude) ──
+  // Combines option 2 (PV length as difficulty weight) + option 3 (cpLoss magnitude).
+  // Deeper combinations that are missed hurt more than simple recaptures.
+  // Weighted average cpLoss is mapped to 0–1 scale where 0cp = 1.0 and 200cp+ = 0.0.
+  if (tacticsTotalWeight > 0) {
+    const weightedAvgCpLoss = tacticsWeightedCpLoss / tacticsTotalWeight;
+    // Map: 0 cpLoss → 1.0, 300+ cpLoss → 0.0 (linear)
+    const tacticsScore = clamp(1 - weightedAvgCpLoss / 300, 0, 1);
+    categoryData["tactics"].successRate = tacticsScore;
+  } else {
+    categoryData["tactics"].successRate = 0.5;
+  }
 
-  // ── Positional score (quiet moves vs expected for rating) ──
-  const actualPositionalSuccess = categoryCounts["positional"].total > 0
-    ? (categoryCounts["positional"].success / categoryCounts["positional"].total) * 100
-    : 50;
-  const expectedPositionalSuccess = interpolateCurve(EXPECTED_POSITIONAL_SUCCESS_CURVE, chessRating);
-  const positionalScore = expectedPositionalSuccess > 0
-    ? clamp(0.5 + (actualPositionalSuccess - expectedPositionalSuccess) / (2 * (100 - expectedPositionalSuccess + 1)), 0, 1)
-    : 0.5;
-  categoryData["positional"].successRate = positionalScore;
+  // ── Positional score (cpLoss magnitude, same approach as tactics) ──
+  // Average cpLoss in positional positions, capped at 300 per position.
+  // No difficulty weighting (positional moves are all "quiet" by definition).
+  if (positionalCount > 0) {
+    const avgCpLoss = positionalTotalCpLoss / positionalCount;
+    const positionalScore = clamp(1 - avgCpLoss / 300, 0, 1);
+    categoryData["positional"].successRate = positionalScore;
+  } else {
+    categoryData["positional"].successRate = 0.5;
+  }
 
   // ── Stat distribution around arena rating ──
   const avgSuccessRate =
