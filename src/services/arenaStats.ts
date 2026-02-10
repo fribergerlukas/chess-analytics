@@ -228,30 +228,6 @@ const EXPECTED_OPENING_EVAL_CURVE: RatePoint[] = [
   { rating: 3500, rate: 15 },
 ];
 
-// Expected tactics success rates by rating (% of short-combo positions with cpLoss < 50)
-const EXPECTED_TACTICS_SUCCESS_CURVE: RatePoint[] = [
-  { rating: 0,    rate: 45 },
-  { rating: 600,  rate: 50 },
-  { rating: 800,  rate: 55 },
-  { rating: 1000, rate: 60 },
-  { rating: 1100, rate: 63 },
-  { rating: 1200, rate: 66 },
-  { rating: 1300, rate: 69 },
-  { rating: 1400, rate: 72 },
-  { rating: 1500, rate: 75 },
-  { rating: 1600, rate: 77 },
-  { rating: 1700, rate: 79 },
-  { rating: 1800, rate: 81 },
-  { rating: 1900, rate: 83 },
-  { rating: 2000, rate: 85 },
-  { rating: 2100, rate: 87 },
-  { rating: 2200, rate: 88 },
-  { rating: 2300, rate: 89 },
-  { rating: 2400, rate: 90 },
-  { rating: 2500, rate: 91 },
-  { rating: 3000, rate: 94 },
-  { rating: 3500, rate: 96 },
-];
 
 // Expected positional success rates by rating (% of quiet positions with cpLoss < 50)
 const EXPECTED_POSITIONAL_SUCCESS_CURVE: RatePoint[] = [
@@ -819,13 +795,10 @@ export function computeArenaStats(
     0.30 * egSaveRate;
   categoryData["endgame"].successRate = endgameScore;
 
-  // ── Tactics score (short combos vs expected for rating) ──
-  const actualTacticsSuccess = categoryCounts["tactics"].total > 0
-    ? (categoryCounts["tactics"].success / categoryCounts["tactics"].total) * 100
-    : 50;
-  const expectedTacticsSuccess = interpolateCurve(EXPECTED_TACTICS_SUCCESS_CURVE, chessRating);
-  const tacticsScore = expectedTacticsSuccess > 0
-    ? clamp(0.5 + (actualTacticsSuccess - expectedTacticsSuccess) / (2 * (100 - expectedTacticsSuccess + 1)), 0, 1)
+  // ── Tactics score (raw success rate, no rating benchmark) ──
+  // Tactics is a raw skill — either you find the capture/check or you don't
+  const tacticsScore = categoryCounts["tactics"].total > 0
+    ? categoryCounts["tactics"].success / categoryCounts["tactics"].total
     : 0.5;
   categoryData["tactics"].successRate = tacticsScore;
 
