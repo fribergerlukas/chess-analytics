@@ -437,40 +437,41 @@ function isEndgamePosition(fen: string): boolean {
 
 /**
  * Classify a position into applicable categories (overlapping where allowed).
- * - Opening: exclusive (ply <= 24)
- * - Endgame: exclusive (< 7 major/minor pieces, post-opening)
- * - Attacking, Defending, Tactics, Positional: can overlap with each other
+ * - Tactics: applies across ALL phases (opening, middlegame, endgame)
+ * - Positional: applies in middlegame and endgame (not opening)
+ * - Opening: ply <= 24, can overlap with tactics
+ * - Endgame: < 7 major/minor pieces, can overlap with tactics and positional
+ * - Attacking, Defending: middlegame only (eval-based)
  */
 function classifyPosition(pos: PositionRow, playerSideIsWhite: boolean): CategoryName[] {
   const evalCp = pos.eval;
   if (evalCp == null) return ["positional"];
 
   const playerEval = playerSideIsWhite ? evalCp * 100 : -evalCp * 100;
-
-  // Opening is exclusive (ply <= 24 = first 12 full moves)
-  if (pos.ply <= 24) return ["opening"];
-
-  // Endgame is exclusive (< 7 major/minor pieces on board)
-  if (isEndgamePosition(pos.fen)) return ["endgame"];
-
-  // Middlegame: attacking, defending, tactics, positional can overlap
   const categories: CategoryName[] = [];
 
-  // Attacking: significantly ahead
-  if (playerEval >= 150) categories.push("attacking");
+  const isOpening = pos.ply <= 24;
+  const isEndgame = !isOpening && isEndgamePosition(pos.fen);
 
-  // Defending: significantly behind
-  if (playerEval <= -150) categories.push("defending");
+  // Phase categories
+  if (isOpening) categories.push("opening");
+  if (isEndgame) categories.push("endgame");
 
-  // Tactics: captures, checks, forcing sequences
+  // Tactics: captures, checks, forcing — applies in ALL phases
   if (isTacticalPosition(pos)) categories.push("tactics");
 
-  // Positional: quiet moves in balanced positions (not tactical, eval between -150 and +150)
-  if (!isTacticalPosition(pos) && playerEval > -150 && playerEval < 150) {
+  // Positional: quiet balanced moves — applies in middlegame and endgame (not opening)
+  if (!isOpening && !isTacticalPosition(pos) && playerEval > -150 && playerEval < 150) {
     categories.push("positional");
   }
 
-  // Fallback: if nothing matched (shouldn't happen), default to positional
+  // Attacking/Defending: middlegame only (not opening, not endgame)
+  if (!isOpening && !isEndgame) {
+    if (playerEval >= 150) categories.push("attacking");
+    if (playerEval <= -150) categories.push("defending");
+  }
+
+  // Fallback: if nothing matched, default to positional
   if (categories.length === 0) categories.push("positional");
 
   return categories;
