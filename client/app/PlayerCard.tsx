@@ -32,6 +32,7 @@ export interface ArenaStatsData {
     missedSaveRate: number;
   };
   gamesAnalyzed: number;
+  record?: { wins: number; draws: number; losses: number };
 }
 
 interface PlayerCardProps {
@@ -124,7 +125,7 @@ export default function PlayerCard({
   arenaStats,
 }: PlayerCardProps) {
   const [flipped, setFlipped] = useState(false);
-  const { tier, shiny, arenaRating, categories, form, backStats, gamesAnalyzed } = arenaStats;
+  const { tier, shiny, arenaRating, categories, form, backStats, gamesAnalyzed, record } = arenaStats;
   const style = shiny ? TIER_STYLES_SHINY[tier] : TIER_STYLES_MATTE[tier];
 
   const flagUrl = countryCode
@@ -610,6 +611,37 @@ export default function PlayerCard({
               value={`${backStats.missedSaveRate}%`}
               accent={style.accent}
             />
+
+            {record && (
+              <>
+                <div
+                  style={{
+                    width: "100%",
+                    height: 1,
+                    backgroundColor: style.accent,
+                    opacity: 0.2,
+                  }}
+                />
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <span style={{ fontSize: 12, fontWeight: 700, color: style.accent, opacity: 0.85 }}>
+                    Record
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>
+                    <span style={{ color: "#81b64c" }}>{record.wins}</span>
+                    {" / "}
+                    <span style={{ color: "#9b9895" }}>{record.draws}</span>
+                    {" / "}
+                    <span style={{ color: "#e05252" }}>{record.losses}</span>
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Form indicator */}

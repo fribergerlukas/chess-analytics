@@ -33,6 +33,7 @@ export interface ArenaStatsResponse {
     missedSaveRate: number;
   };
   gamesAnalyzed: number;
+  record?: { wins: number; draws: number; losses: number };
 }
 
 interface PositionRow {
