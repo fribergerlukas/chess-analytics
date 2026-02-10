@@ -178,6 +178,7 @@ export default function Home() {
           params.set("timeCategory", tc);
           params.set("chessRating", String(ratings[tc]));
           if (profileData.title) params.set("title", profileData.title);
+          if (ratedFilter !== "all") params.set("rated", ratedFilter);
           const url = `${API_BASE}/users/${encodeURIComponent(user)}/arena-stats?${params}`;
           try {
             const res = await fetch(url);

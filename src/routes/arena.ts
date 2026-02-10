@@ -20,7 +20,7 @@ router.get(
       const username = typeof req.params.username === "string"
         ? req.params.username
         : String(req.params.username);
-      const { timeCategory, chessRating, title } = req.query;
+      const { timeCategory, chessRating, title, rated } = req.query;
 
       if (!timeCategory || typeof timeCategory !== "string") {
         res.status(400).json({ error: "timeCategory query param is required" });
@@ -42,9 +42,15 @@ router.get(
         return;
       }
 
+      // Parse rated filter
+      const ratedFilter = rated === "true" ? true : rated === "false" ? false : undefined;
+
       // Get all distinct time controls for this user, then filter by category
+      const gameWhere: any = { userId: user.id };
+      if (ratedFilter !== undefined) gameWhere.rated = ratedFilter;
+
       const allTCs = await prisma.game.findMany({
-        where: { userId: user.id },
+        where: gameWhere,
         select: { timeControl: true },
         distinct: ["timeControl"],
       });
@@ -55,7 +61,7 @@ router.get(
       // Fetch last 40 games for this time category
       const games = await prisma.game.findMany({
         where: {
-          userId: user.id,
+          ...gameWhere,
           timeControl: { in: matchingTCs },
         },
         select: {
