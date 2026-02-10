@@ -114,7 +114,8 @@ router.get(
         games,
         rating,
         titleStr,
-        gamePlayerSide
+        gamePlayerSide,
+        timeCategory.toLowerCase()
       );
 
       res.json(result);

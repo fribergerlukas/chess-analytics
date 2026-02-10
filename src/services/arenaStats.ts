@@ -10,7 +10,7 @@ export type CategoryName =
   | "tactics"
   | "positional"
   | "opening"
-  | "calculation";
+  | "endgame";
 
 interface CategoryResult {
   stat: number;
@@ -57,13 +57,14 @@ interface GameRow {
   endDate: Date;
 }
 
-// ── Percentile Curve ──────────────────────────────────────────────────
-// Single curve for all time controls, based on chess.com distribution.
-// Linear interpolation between anchor points.
+// ── Percentile Curves ─────────────────────────────────────────────────
+// Shared base curve up to gold, then per-time-control top end.
+// Rapid ratings are lower at the top (best players ~2800-2900)
+// vs bullet/blitz where top players reach 3000-3400+.
 
 type CurvePoint = { rating: number; arena: number };
 
-const RATING_CURVE: CurvePoint[] = [
+const RATING_CURVE_BASE: CurvePoint[] = [
   { rating: 500,  arena: 38 },
   { rating: 599,  arena: 39 },
   { rating: 600,  arena: 40 },
@@ -85,13 +86,40 @@ const RATING_CURVE: CurvePoint[] = [
   { rating: 1300, arena: 64 },
   { rating: 1600, arena: 71 },
   { rating: 2000, arena: 80 },
-  { rating: 2300, arena: 84 },
-  { rating: 2600, arena: 87 },
-  { rating: 3000, arena: 90 },
-  { rating: 3200, arena: 95 },
-  { rating: 3400, arena: 98 },
-  { rating: 3500, arena: 99 },
 ];
+
+// Top-end anchors per time control
+const RATING_CURVE_TOP: Record<string, CurvePoint[]> = {
+  bullet: [
+    { rating: 2300, arena: 84 },
+    { rating: 2600, arena: 87 },
+    { rating: 3000, arena: 90 },
+    { rating: 3200, arena: 95 },
+    { rating: 3400, arena: 98 },
+    { rating: 3500, arena: 99 },
+  ],
+  blitz: [
+    { rating: 2300, arena: 84 },
+    { rating: 2600, arena: 87 },
+    { rating: 3000, arena: 90 },
+    { rating: 3200, arena: 95 },
+    { rating: 3400, arena: 98 },
+    { rating: 3500, arena: 99 },
+  ],
+  rapid: [
+    { rating: 2200, arena: 84 },
+    { rating: 2400, arena: 87 },
+    { rating: 2600, arena: 90 },
+    { rating: 2750, arena: 95 },
+    { rating: 2900, arena: 98 },
+    { rating: 3000, arena: 99 },
+  ],
+};
+
+function getRatingCurve(timeCategory: string): CurvePoint[] {
+  const top = RATING_CURVE_TOP[timeCategory] || RATING_CURVE_TOP["blitz"];
+  return [...RATING_CURVE_BASE, ...top];
+}
 
 // Tier bounds — derived from arena rating
 const TIER_BOUNDS: { tier: Tier; min: number; max: number }[] = [
@@ -115,7 +143,7 @@ const CATEGORY_NAMES: CategoryName[] = [
   "tactics",
   "positional",
   "opening",
-  "calculation",
+  "endgame",
 ];
 
 const SCALE_FACTOR = 20;
@@ -149,29 +177,29 @@ const EXPECTED_MISSED_SAVE_CURVE: RatePoint[] = [
   { rating: 3500, rate: 0.3 },
 ];
 
-// Expected calculation failure rates by rating (% of calculation positions with cpLoss >= 150)
-const EXPECTED_CALC_FAIL_CURVE: RatePoint[] = [
-  { rating: 0,    rate: 45 },
-  { rating: 600,  rate: 40 },
-  { rating: 800,  rate: 35 },
-  { rating: 1000, rate: 30 },
-  { rating: 1100, rate: 27 },
-  { rating: 1200, rate: 24 },
-  { rating: 1300, rate: 21 },
-  { rating: 1400, rate: 19 },
-  { rating: 1500, rate: 17 },
-  { rating: 1600, rate: 15 },
-  { rating: 1700, rate: 13 },
-  { rating: 1800, rate: 11 },
-  { rating: 1900, rate: 9.5 },
-  { rating: 2000, rate: 8 },
-  { rating: 2100, rate: 7 },
-  { rating: 2200, rate: 6 },
-  { rating: 2300, rate: 5 },
-  { rating: 2400, rate: 4 },
-  { rating: 2500, rate: 3.5 },
-  { rating: 3000, rate: 2 },
-  { rating: 3500, rate: 1 },
+// Expected endgame accuracy by rating (% of endgame positions with cpLoss < 50)
+const EXPECTED_ENDGAME_ACCURACY_CURVE: RatePoint[] = [
+  { rating: 0,    rate: 50 },
+  { rating: 600,  rate: 55 },
+  { rating: 800,  rate: 59 },
+  { rating: 1000, rate: 63 },
+  { rating: 1100, rate: 65 },
+  { rating: 1200, rate: 67 },
+  { rating: 1300, rate: 69 },
+  { rating: 1400, rate: 71 },
+  { rating: 1500, rate: 73 },
+  { rating: 1600, rate: 75 },
+  { rating: 1700, rate: 77 },
+  { rating: 1800, rate: 79 },
+  { rating: 1900, rate: 81 },
+  { rating: 2000, rate: 83 },
+  { rating: 2100, rate: 85 },
+  { rating: 2200, rate: 86 },
+  { rating: 2300, rate: 87 },
+  { rating: 2400, rate: 88 },
+  { rating: 2500, rate: 89 },
+  { rating: 3000, rate: 92 },
+  { rating: 3500, rate: 94 },
 ];
 
 // Expected average post-opening eval loss by rating (centipawns behind after 15 moves)
@@ -306,8 +334,8 @@ function interpolateCurve(curve: RatePoint[], rating: number): number {
 
 // ── Arena Rating (percentile curve) ────────────────────────────────────
 
-function computeArenaRating(chessRating: number): number {
-  const curve = RATING_CURVE;
+function computeArenaRating(chessRating: number, timeCategory: string): number {
+  const curve = getRatingCurve(timeCategory);
   // Below lowest anchor
   if (chessRating <= curve[0].rating) return curve[0].arena;
   // Above highest anchor
@@ -380,35 +408,8 @@ function isCaptureMove(fen: string, bestMoveUci: string): boolean {
 }
 
 /**
- * Check if a position qualifies as a CALCULATION position:
- * - Best move is forcing (capture or check)
- * - Engine PV length >= 4 plies (deep forcing line)
- * - Position isn't completely won/lost (|eval| < 500 cp) to avoid trivial sequences
- */
-function isCalculationPosition(pos: PositionRow): boolean {
-  if (!pos.bestMoveUci || pos.bestMoveUci.length < 4) return false;
-
-  // PV must be >= 4 plies deep
-  const pvMoves = pos.pv ? pos.pv.trim().split(/\s+/) : [];
-  if (pvMoves.length < 4) return false;
-
-  // Position shouldn't be completely won/lost (trivial calculation)
-  if (pos.eval != null && Math.abs(pos.eval * 100) >= 500) return false;
-
-  // Best move must be forcing: capture or check
-  const bestIsCapture = isCaptureMove(pos.fen, pos.bestMoveUci);
-  // Approximate check detection: if played move matches best move and SAN has '+'
-  const san = pos.san || "";
-  const playedIsBest = pos.moveUci === pos.bestMoveUci;
-  const bestIsCheck = playedIsBest && (san.includes("+") || san.includes("#"));
-
-  return bestIsCapture || bestIsCheck;
-}
-
-/**
- * Check if a position is tactical: short combination (captures/checks but NOT deep forcing lines).
- * Tactics = pattern recognition (forks, pins, skewers), PV < 4.
- * Distinguished from calculation which requires PV >= 4.
+ * Check if a position is tactical: captures, checks, or forcing sequences.
+ * Includes both short combos and deep forcing lines.
  */
 function isTacticalPosition(pos: PositionRow): boolean {
   const san = pos.san || "";
@@ -417,37 +418,62 @@ function isTacticalPosition(pos: PositionRow): boolean {
     ? isCaptureMove(pos.fen, pos.bestMoveUci)
     : false;
 
-  if (!hasCaptureOrCheck && !bestIsCapture) return false;
-
-  // Short PV (< 4) = tactics, long PV (>= 4) = handled by calculation
-  const pvMoves = pos.pv ? pos.pv.trim().split(/\s+/) : [];
-  return pvMoves.length < 4;
+  return hasCaptureOrCheck || bestIsCapture;
 }
 
-function classifyPosition(pos: PositionRow, playerSideIsWhite: boolean): CategoryName {
-  const evalCp = pos.eval;
-  if (evalCp == null) return "positional";
+/**
+ * Detect endgame positions using Lichess definition:
+ * Fewer than 7 major/minor pieces on the board (excluding kings and pawns).
+ * Counts: queens, rooks, bishops, knights for both sides.
+ */
+function isEndgamePosition(fen: string): boolean {
+  const boardPart = fen.split(" ")[0];
+  let pieceCount = 0;
+  for (const ch of boardPart) {
+    if ("qrbnQRBN".includes(ch)) pieceCount++;
+  }
+  return pieceCount < 7;
+}
 
-  // eval is always from WHITE perspective, convert to player perspective
+/**
+ * Classify a position into applicable categories (overlapping where allowed).
+ * - Opening: exclusive (ply <= 24)
+ * - Endgame: exclusive (< 7 major/minor pieces, post-opening)
+ * - Attacking, Defending, Tactics, Positional: can overlap with each other
+ */
+function classifyPosition(pos: PositionRow, playerSideIsWhite: boolean): CategoryName[] {
+  const evalCp = pos.eval;
+  if (evalCp == null) return ["positional"];
+
   const playerEval = playerSideIsWhite ? evalCp * 100 : -evalCp * 100;
 
-  // Priority 1: Opening (ply <= 24 = first 12 full moves)
-  if (pos.ply <= 24) return "opening";
+  // Opening is exclusive (ply <= 24 = first 12 full moves)
+  if (pos.ply <= 24) return ["opening"];
 
-  // Priority 2: Calculation (deep forcing line, PV >= 4)
-  if (isCalculationPosition(pos)) return "calculation";
+  // Endgame is exclusive (< 7 major/minor pieces on board)
+  if (isEndgamePosition(pos.fen)) return ["endgame"];
 
-  // Priority 3: Attacking (significantly ahead)
-  if (playerEval >= 150) return "attacking";
+  // Middlegame: attacking, defending, tactics, positional can overlap
+  const categories: CategoryName[] = [];
 
-  // Priority 4: Defending (significantly behind)
-  if (playerEval <= -150) return "defending";
+  // Attacking: significantly ahead
+  if (playerEval >= 150) categories.push("attacking");
 
-  // Priority 5: Tactics (short combination — captures/checks with PV < 4)
-  if (isTacticalPosition(pos)) return "tactics";
+  // Defending: significantly behind
+  if (playerEval <= -150) categories.push("defending");
 
-  // Priority 6: Positional (quiet moves, no captures/checks in best move, balanced eval)
-  return "positional";
+  // Tactics: captures, checks, forcing sequences
+  if (isTacticalPosition(pos)) categories.push("tactics");
+
+  // Positional: quiet moves in balanced positions (not tactical, eval between -150 and +150)
+  if (!isTacticalPosition(pos) && playerEval > -150 && playerEval < 150) {
+    categories.push("positional");
+  }
+
+  // Fallback: if nothing matched (shouldn't happen), default to positional
+  if (categories.length === 0) categories.push("positional");
+
+  return categories;
 }
 
 // ── Main Computation ───────────────────────────────────────────────────
@@ -457,9 +483,10 @@ export function computeArenaStats(
   games: GameRow[],
   chessRating: number,
   title?: string,
-  gamePlayerSide?: Record<number, "WHITE" | "BLACK">
+  gamePlayerSide?: Record<number, "WHITE" | "BLACK">,
+  timeCategory: string = "blitz"
 ): ArenaStatsResponse {
-  const arenaRating = computeArenaRating(chessRating);
+  const arenaRating = computeArenaRating(chessRating, timeCategory);
   const tier = getTierFromArena(arenaRating);
   const bounds = getTierBounds(tier);
 
@@ -473,7 +500,7 @@ export function computeArenaStats(
     tactics: { total: 0, success: 0 },
     positional: { total: 0, success: 0 },
     opening: { total: 0, success: 0 },
-    calculation: { total: 0, success: 0 },
+    endgame: { total: 0, success: 0 },
   };
 
   let totalPositions = 0;
@@ -490,11 +517,13 @@ export function computeArenaStats(
   let pressureZoneTotal = 0;      // opponent has initiative (eval -50 to -200)
   let pressureZoneHeld = 0;       // held in pressure zone (cpLoss < 50)
 
-  // Calculation-specific counters
-  let calcTotal = 0;              // positions classified as calculation
-  let calcBestMove = 0;           // played the engine's best move (moveUci === bestMoveUci)
-  let calcSuccess = 0;            // cpLoss < 50 (stayed within 50cp of best line)
-  let calcFail = 0;               // cpLoss >= 150 (failed the calculation)
+  // Endgame-specific counters
+  let endgameTotal = 0;           // positions classified as endgame
+  let endgameSuccess = 0;         // cpLoss < 50 in endgame
+  let endgameWinningTotal = 0;    // endgame positions where eval >= 150
+  let endgameWinningConverted = 0;// won the game from winning endgame
+  let endgameLosingTotal = 0;     // endgame positions where eval <= -150
+  let endgameLosingSaved = 0;     // drew or won from losing endgame
 
   // Attacking-specific counters
   let broadMissedWins = 0;        // winning (eval >= 150) AND cpLoss >= 100
@@ -512,18 +541,21 @@ export function computeArenaStats(
     const moverIsWhite = pos.sideToMove === "BLACK";
     const playerEvalCp = moverIsWhite ? pos.eval * 100 : -pos.eval * 100;
 
-    const category = classifyPosition(pos, moverIsWhite);
-    categoryCounts[category].total++;
-    if (pos.cpLoss < 50) {
-      categoryCounts[category].success++;
+    // Overlapping classification — position can belong to multiple categories
+    const categories = classifyPosition(pos, moverIsWhite);
+    for (const cat of categories) {
+      categoryCounts[cat].total++;
+      if (pos.cpLoss < 50) {
+        categoryCounts[cat].success++;
+      }
     }
 
-    // Calculation-specific tracking
-    if (category === "calculation") {
-      calcTotal++;
-      if (pos.moveUci === pos.bestMoveUci) calcBestMove++;
-      if (pos.cpLoss < 50) calcSuccess++;
-      if (pos.cpLoss >= 150) calcFail++;
+    // Endgame-specific tracking
+    if (categories.includes("endgame")) {
+      endgameTotal++;
+      if (pos.cpLoss < 50) endgameSuccess++;
+      if (playerEvalCp >= 150) endgameWinningTotal++;
+      if (playerEvalCp <= -150) endgameLosingTotal++;
     }
 
     // Defending-specific tracking
@@ -731,27 +763,60 @@ export function computeArenaStats(
   );
   categoryData["opening"].successRate = openingScore;
 
-  // ── Calculation score (composite) ──
-  // 1. Calculation failure rate vs expected for rating (weight 0.40)
-  const actualCalcFailRate = calcTotal > 0 ? (calcFail / calcTotal) * 100 : 0;
-  const expectedCalcFailRate = interpolateCurve(EXPECTED_CALC_FAIL_CURVE, chessRating);
-  const calcFailScore = expectedCalcFailRate > 0
-    ? clamp(0.5 + (expectedCalcFailRate - actualCalcFailRate) / (2 * expectedCalcFailRate), 0, 1)
+  // ── Endgame score (composite of 3 metrics) ──
+  // Track per-game endgame results for conversion and save rates
+  const gameResults: Record<number, string> = {};
+  for (const g of games) {
+    gameResults[g.id] = g.result;
+  }
+
+  // Count games with winning/losing endgame positions and their outcomes
+  const gamesWithWinningEndgame = new Set<number>();
+  const gamesWithLosingEndgame = new Set<number>();
+  for (const pos of positions) {
+    if (pos.eval == null) continue;
+    if (!isEndgamePosition(pos.fen)) continue;
+    const moverIsWhite = pos.sideToMove === "BLACK";
+    const pEval = moverIsWhite ? pos.eval * 100 : -pos.eval * 100;
+    if (pEval >= 150) gamesWithWinningEndgame.add(pos.gameId);
+    if (pEval <= -150) gamesWithLosingEndgame.add(pos.gameId);
+  }
+
+  let egConvertedWins = 0;
+  for (const gId of gamesWithWinningEndgame) {
+    if (gameResults[gId] === "WIN") egConvertedWins++;
+  }
+
+  let egSavedLosses = 0;
+  for (const gId of gamesWithLosingEndgame) {
+    if (gameResults[gId] === "DRAW" || gameResults[gId] === "WIN") egSavedLosses++;
+  }
+
+  // 1. Endgame accuracy vs expected for rating (weight 0.40)
+  const actualEndgameAcc = endgameTotal > 0
+    ? (endgameSuccess / endgameTotal) * 100 : 50;
+  const expectedEndgameAcc = interpolateCurve(EXPECTED_ENDGAME_ACCURACY_CURVE, chessRating);
+  const endgameAccScore = expectedEndgameAcc > 0
+    ? clamp(0.5 + (actualEndgameAcc - expectedEndgameAcc) / (2 * (100 - expectedEndgameAcc + 1)), 0, 1)
     : 0.5;
 
-  // 2. Best move accuracy in calculation positions (weight 0.35)
-  //    How often the player finds the exact engine best move
-  const calcBestMoveRate = calcTotal > 0 ? calcBestMove / calcTotal : 0.5;
+  // 2. Endgame conversion rate (weight 0.30)
+  //    In games with winning endgame positions (eval >= 150), how often did you win?
+  const egConversionRate = gamesWithWinningEndgame.size > 0
+    ? egConvertedWins / gamesWithWinningEndgame.size
+    : 0.5;
 
-  // 3. Calculation success rate (weight 0.25)
-  //    cpLoss < 50 in calculation positions (stayed within 50cp of best line)
-  const calcSuccessRate = calcTotal > 0 ? calcSuccess / calcTotal : 0.5;
+  // 3. Endgame save rate (weight 0.30)
+  //    In games with losing endgame positions (eval <= -150), how often did you draw or win?
+  const egSaveRate = gamesWithLosingEndgame.size > 0
+    ? egSavedLosses / gamesWithLosingEndgame.size
+    : 0.5;
 
-  const calculationScore =
-    0.40 * calcFailScore +
-    0.35 * calcBestMoveRate +
-    0.25 * calcSuccessRate;
-  categoryData["calculation"].successRate = calculationScore;
+  const endgameScore =
+    0.40 * endgameAccScore +
+    0.30 * egConversionRate +
+    0.30 * egSaveRate;
+  categoryData["endgame"].successRate = endgameScore;
 
   // ── Tactics score (short combos vs expected for rating) ──
   const actualTacticsSuccess = categoryCounts["tactics"].total > 0

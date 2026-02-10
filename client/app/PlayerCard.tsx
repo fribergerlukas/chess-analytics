@@ -20,7 +20,7 @@ export interface ArenaStatsData {
     tactics: CategoryStat;
     positional: CategoryStat;
     opening: CategoryStat;
-    calculation: CategoryStat;
+    endgame: CategoryStat;
   };
   form: number;
   backStats: {
@@ -109,7 +109,7 @@ const STAT_LABELS: { key: keyof ArenaStatsData["categories"]; label: string }[] 
   { key: "tactics", label: "TAC" },
   { key: "positional", label: "POS" },
   { key: "opening", label: "OPN" },
-  { key: "calculation", label: "CAL" },
+  { key: "endgame", label: "END" },
 ];
 
 // ── Component ──────────────────────────────────────────────────────────
