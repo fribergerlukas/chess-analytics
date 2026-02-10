@@ -103,6 +103,7 @@ export default function Home() {
       let profileData: ProfileData = {};
       let ratings: Record<string, number> = {};
       let peakRatings: Record<string, number> = {};
+      let records: Record<string, { wins: number; draws: number; losses: number }> = {};
 
       try {
         const [profileRes, ratingsRes] = await Promise.all([
@@ -129,6 +130,13 @@ export default function Home() {
             }
             if (d[key]?.best?.rating) {
               peakRatings[tc] = d[key].best.rating;
+            }
+            if (d[key]?.record) {
+              records[tc] = {
+                wins: d[key].record.win || 0,
+                draws: d[key].record.draw || 0,
+                losses: d[key].record.loss || 0,
+              };
             }
           }
         }
@@ -175,6 +183,9 @@ export default function Home() {
             const res = await fetch(url);
             if (!res.ok) return null;
             const arenaStats: ArenaStatsData = await res.json();
+            if (records[tc]) {
+              arenaStats.record = records[tc];
+            }
             return {
               timeControl: tc,
               chessRating: ratings[tc],

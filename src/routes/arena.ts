@@ -75,13 +75,6 @@ router.get(
         return;
       }
 
-      // Total W/D/L across ALL games for this time category (not just last 40)
-      const [wins, draws, losses] = await Promise.all([
-        prisma.game.count({ where: { userId: user.id, timeControl: { in: matchingTCs }, result: "WIN" } }),
-        prisma.game.count({ where: { userId: user.id, timeControl: { in: matchingTCs }, result: "DRAW" } }),
-        prisma.game.count({ where: { userId: user.id, timeControl: { in: matchingTCs }, result: "LOSS" } }),
-      ]);
-
       // Determine which side the user played in each game from PGN headers
       const userLower = username.toLowerCase();
       const gamePlayerSide: Record<number, "WHITE" | "BLACK"> = {};
@@ -125,7 +118,7 @@ router.get(
         timeCategory.toLowerCase()
       );
 
-      res.json({ ...result, record: { wins, draws, losses } });
+      res.json(result);
     } catch (err) {
       next(err);
     }

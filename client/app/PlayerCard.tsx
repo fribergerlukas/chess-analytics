@@ -557,7 +557,7 @@ export default function PlayerCard({
                 letterSpacing: 1,
               }}
             >
-              {TC_ICONS[timeControl]} {timeControl} &middot; {gamesAnalyzed} games
+              {TC_ICONS[timeControl]} {timeControl} &middot; {record ? `${record.wins + record.draws + record.losses} games` : `${gamesAnalyzed} analyzed`}
             </p>
           </div>
 
