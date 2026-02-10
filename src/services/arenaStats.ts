@@ -200,6 +200,56 @@ const EXPECTED_OPENING_EVAL_CURVE: RatePoint[] = [
   { rating: 3500, rate: 15 },
 ];
 
+// Expected tactics success rates by rating (% of short-combo positions with cpLoss < 50)
+const EXPECTED_TACTICS_SUCCESS_CURVE: RatePoint[] = [
+  { rating: 0,    rate: 45 },
+  { rating: 600,  rate: 50 },
+  { rating: 800,  rate: 55 },
+  { rating: 1000, rate: 60 },
+  { rating: 1100, rate: 63 },
+  { rating: 1200, rate: 66 },
+  { rating: 1300, rate: 69 },
+  { rating: 1400, rate: 72 },
+  { rating: 1500, rate: 75 },
+  { rating: 1600, rate: 77 },
+  { rating: 1700, rate: 79 },
+  { rating: 1800, rate: 81 },
+  { rating: 1900, rate: 83 },
+  { rating: 2000, rate: 85 },
+  { rating: 2100, rate: 87 },
+  { rating: 2200, rate: 88 },
+  { rating: 2300, rate: 89 },
+  { rating: 2400, rate: 90 },
+  { rating: 2500, rate: 91 },
+  { rating: 3000, rate: 94 },
+  { rating: 3500, rate: 96 },
+];
+
+// Expected positional success rates by rating (% of quiet positions with cpLoss < 50)
+const EXPECTED_POSITIONAL_SUCCESS_CURVE: RatePoint[] = [
+  { rating: 0,    rate: 55 },
+  { rating: 600,  rate: 60 },
+  { rating: 800,  rate: 64 },
+  { rating: 1000, rate: 68 },
+  { rating: 1100, rate: 70 },
+  { rating: 1200, rate: 72 },
+  { rating: 1300, rate: 74 },
+  { rating: 1400, rate: 76 },
+  { rating: 1500, rate: 78 },
+  { rating: 1600, rate: 80 },
+  { rating: 1700, rate: 82 },
+  { rating: 1800, rate: 83 },
+  { rating: 1900, rate: 84 },
+  { rating: 2000, rate: 86 },
+  { rating: 2100, rate: 87 },
+  { rating: 2200, rate: 88 },
+  { rating: 2300, rate: 89 },
+  { rating: 2400, rate: 90 },
+  { rating: 2500, rate: 91 },
+  { rating: 3000, rate: 93 },
+  { rating: 3500, rate: 95 },
+];
+
 // Expected missed win rates by rating
 // Missed win = winning (eval >= 150) AND cpLoss >= 100
 const EXPECTED_MISSED_WIN_CURVE: RatePoint[] = [
@@ -355,6 +405,25 @@ function isCalculationPosition(pos: PositionRow): boolean {
   return bestIsCapture || bestIsCheck;
 }
 
+/**
+ * Check if a position is tactical: short combination (captures/checks but NOT deep forcing lines).
+ * Tactics = pattern recognition (forks, pins, skewers), PV < 4.
+ * Distinguished from calculation which requires PV >= 4.
+ */
+function isTacticalPosition(pos: PositionRow): boolean {
+  const san = pos.san || "";
+  const hasCaptureOrCheck = san.includes("x") || san.includes("+") || san.includes("#");
+  const bestIsCapture = pos.bestMoveUci && pos.bestMoveUci.length >= 4
+    ? isCaptureMove(pos.fen, pos.bestMoveUci)
+    : false;
+
+  if (!hasCaptureOrCheck && !bestIsCapture) return false;
+
+  // Short PV (< 4) = tactics, long PV (>= 4) = handled by calculation
+  const pvMoves = pos.pv ? pos.pv.trim().split(/\s+/) : [];
+  return pvMoves.length < 4;
+}
+
 function classifyPosition(pos: PositionRow, playerSideIsWhite: boolean): CategoryName {
   const evalCp = pos.eval;
   if (evalCp == null) return "positional";
@@ -362,10 +431,10 @@ function classifyPosition(pos: PositionRow, playerSideIsWhite: boolean): Categor
   // eval is always from WHITE perspective, convert to player perspective
   const playerEval = playerSideIsWhite ? evalCp * 100 : -evalCp * 100;
 
-  // Priority 1: Opening (ply <= 30 = first 15 full moves)
-  if (pos.ply <= 30) return "opening";
+  // Priority 1: Opening (ply <= 24 = first 12 full moves)
+  if (pos.ply <= 24) return "opening";
 
-  // Priority 2: Calculation (forcing line with deep PV)
+  // Priority 2: Calculation (deep forcing line, PV >= 4)
   if (isCalculationPosition(pos)) return "calculation";
 
   // Priority 3: Attacking (significantly ahead)
@@ -374,14 +443,10 @@ function classifyPosition(pos: PositionRow, playerSideIsWhite: boolean): Categor
   // Priority 4: Defending (significantly behind)
   if (playerEval <= -150) return "defending";
 
-  // Priority 5: Tactics (capture or check/mate)
-  const san = pos.san || "";
-  if (san.includes("x") || san.includes("+") || san.includes("#")) return "tactics";
-  if (pos.bestMoveUci && pos.bestMoveUci.length >= 4) {
-    if (isCaptureMove(pos.fen, pos.bestMoveUci)) return "tactics";
-  }
+  // Priority 5: Tactics (short combination — captures/checks with PV < 4)
+  if (isTacticalPosition(pos)) return "tactics";
 
-  // Priority 6: Positional (everything else)
+  // Priority 6: Positional (quiet moves, no captures/checks in best move, balanced eval)
   return "positional";
 }
 
@@ -635,12 +700,12 @@ export function computeArenaStats(
     let closest: (typeof gPos)[0] | null = null;
     let closestDist = Infinity;
     for (const p of gPos) {
-      const dist = Math.abs(p.ply - 30);
+      const dist = Math.abs(p.ply - 24);
       if (dist < closestDist) {
         closestDist = dist;
         closest = p;
       }
-      if (p.ply > 34) break;
+      if (p.ply > 28) break;
     }
     if (closest && closest.eval != null && closestDist <= 6) {
       const playerIsWhite = gamePlayerSide
@@ -687,6 +752,26 @@ export function computeArenaStats(
     0.35 * calcBestMoveRate +
     0.25 * calcSuccessRate;
   categoryData["calculation"].successRate = calculationScore;
+
+  // ── Tactics score (short combos vs expected for rating) ──
+  const actualTacticsSuccess = categoryCounts["tactics"].total > 0
+    ? (categoryCounts["tactics"].success / categoryCounts["tactics"].total) * 100
+    : 50;
+  const expectedTacticsSuccess = interpolateCurve(EXPECTED_TACTICS_SUCCESS_CURVE, chessRating);
+  const tacticsScore = expectedTacticsSuccess > 0
+    ? clamp(0.5 + (actualTacticsSuccess - expectedTacticsSuccess) / (2 * (100 - expectedTacticsSuccess + 1)), 0, 1)
+    : 0.5;
+  categoryData["tactics"].successRate = tacticsScore;
+
+  // ── Positional score (quiet moves vs expected for rating) ──
+  const actualPositionalSuccess = categoryCounts["positional"].total > 0
+    ? (categoryCounts["positional"].success / categoryCounts["positional"].total) * 100
+    : 50;
+  const expectedPositionalSuccess = interpolateCurve(EXPECTED_POSITIONAL_SUCCESS_CURVE, chessRating);
+  const positionalScore = expectedPositionalSuccess > 0
+    ? clamp(0.5 + (actualPositionalSuccess - expectedPositionalSuccess) / (2 * (100 - expectedPositionalSuccess + 1)), 0, 1)
+    : 0.5;
+  categoryData["positional"].successRate = positionalScore;
 
   // ── Stat distribution around arena rating ──
   const avgSuccessRate =
