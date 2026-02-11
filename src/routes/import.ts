@@ -11,6 +11,7 @@ const chesscomImportSchema = z.object({
   username: z.string().min(1, "Username is required"),
   timeCategory: z.enum(["bullet", "blitz", "rapid"]).optional(),
   rated: z.boolean().optional(),
+  maxGames: z.number().int().min(1).max(200).optional(),
 });
 
 // TODO: Add Lichess import route (POST /lichess)
@@ -21,8 +22,8 @@ router.post(
   "/chesscom",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { username, timeCategory, rated } = chesscomImportSchema.parse(req.body);
-      const imported = await importGames(username, timeCategory, rated);
+      const { username, timeCategory, rated, maxGames } = chesscomImportSchema.parse(req.body);
+      const imported = await importGames(username, timeCategory, rated, maxGames);
 
       let parsed = 0;
       if (imported > 0) {

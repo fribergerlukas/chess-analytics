@@ -69,9 +69,10 @@ function computeResult(game: ChesscomGame, username: string): Result {
 
 // TODO: Add hook point for future Stockfish analysis after import
 
-const MAX_GAMES = 40;
+const DEFAULT_MAX_GAMES = 100;
 
-export async function importGames(username: string, timeCategory?: string, rated?: boolean): Promise<number> {
+export async function importGames(username: string, timeCategory?: string, rated?: boolean, maxGames?: number): Promise<number> {
+  const MAX_GAMES = Math.min(maxGames || DEFAULT_MAX_GAMES, 200);
   await validateUser(username);
 
   const user = await prisma.user.upsert({

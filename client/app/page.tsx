@@ -99,12 +99,12 @@ export default function Home() {
     setStatusMsg("Importing games from chess.com...");
 
     try {
-      // Step 1: Import rated games for all time controls in parallel
+      // Step 1: Import rated games for all time controls in parallel (always import up to 100)
       const importPromises = TIME_CONTROLS.map((tc) =>
         fetch(`${API_BASE}/import/chesscom`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: user, timeCategory: tc, rated: true }),
+          body: JSON.stringify({ username: user, timeCategory: tc, rated: true, maxGames: 100 }),
         })
       );
       const importResults = await Promise.all(importPromises);
@@ -210,6 +210,7 @@ export default function Home() {
       const statsParams = new URLSearchParams();
       statsParams.set("timeCategory", defaultTC);
       statsParams.set("rated", "true");
+      statsParams.set("limit", String(gameLimit));
 
       const url = `${API_BASE}/users/${encodeURIComponent(user)}/stats?${statsParams}`;
 
@@ -249,7 +250,7 @@ export default function Home() {
           fetch(`${API_BASE}/import/chesscom`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username: user, timeCategory: tc, rated: true }),
+            body: JSON.stringify({ username: user, timeCategory: tc, rated: true, maxGames: 100 }),
           })
         )
       );
@@ -338,6 +339,44 @@ export default function Home() {
       setCompareOpen(false);
     }
   }
+
+  async function refreshReport() {
+    if (!queriedUser) return;
+    setGamesLoading(true);
+    try {
+      const statsParams = new URLSearchParams();
+      statsParams.set("timeCategory", gameTimeCategory);
+      statsParams.set("limit", String(gameLimit));
+      if (gameRatedFilter !== "all") statsParams.set("rated", gameRatedFilter);
+
+      const [statsRes, gamesRes] = await Promise.all([
+        fetch(`${API_BASE}/users/${encodeURIComponent(queriedUser)}/stats?${statsParams}`),
+        fetch(`${API_BASE}/users/${encodeURIComponent(queriedUser)}/games?${new URLSearchParams({
+          limit: String(gameLimit),
+          timeCategory: gameTimeCategory,
+          ...(gameRatedFilter !== "all" ? { rated: gameRatedFilter } : {}),
+        })}`),
+      ]);
+
+      if (statsRes.ok) setStats(await statsRes.json());
+      if (gamesRes.ok) { const d = await gamesRes.json(); setGames(d.games); }
+    } catch {
+      // Non-critical
+    } finally {
+      setGamesLoading(false);
+    }
+  }
+
+  // Auto-refresh report when any filter changes
+  const reportInitialized = useRef(false);
+  useEffect(() => {
+    if (!reportInitialized.current) {
+      reportInitialized.current = true;
+      return;
+    }
+    refreshReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameTimeCategory, gameRatedFilter, gameLimit]);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#312e2b", color: "#fff" }}>
@@ -833,48 +872,6 @@ export default function Home() {
                   <option value="true">Rated</option>
                   <option value="false">Casual</option>
                 </select>
-
-                <button
-                  onClick={() => {
-                    if (!queriedUser) return;
-                    setGamesLoading(true);
-                    (async () => {
-                      try {
-                        const statsParams = new URLSearchParams();
-                        statsParams.set("timeCategory", gameTimeCategory);
-                        if (gameRatedFilter !== "all") statsParams.set("rated", gameRatedFilter);
-                        const [statsRes, gamesRes] = await Promise.all([
-                          fetch(`${API_BASE}/users/${encodeURIComponent(queriedUser)}/stats?${statsParams}`),
-                          fetch(`${API_BASE}/users/${encodeURIComponent(queriedUser)}/games?${new URLSearchParams({
-                            limit: String(gameLimit),
-                            timeCategory: gameTimeCategory,
-                            ...(gameRatedFilter !== "all" ? { rated: gameRatedFilter } : {}),
-                          })}`),
-                        ]);
-                        if (statsRes.ok) setStats(await statsRes.json());
-                        if (gamesRes.ok) { const d = await gamesRes.json(); setGames(d.games); }
-                      } catch { /* non-critical */ } finally { setGamesLoading(false); }
-                    })();
-                  }}
-                  disabled={gamesLoading}
-                  style={{
-                    padding: "7px 14px",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    borderRadius: 8,
-                    border: "none",
-                    backgroundColor: "#81b64c",
-                    color: "#fff",
-                    cursor: gamesLoading ? "not-allowed" : "pointer",
-                    opacity: gamesLoading ? 0.6 : 1,
-                    transition: "all 0.15s ease",
-                    letterSpacing: 0.3,
-                  }}
-                  onMouseEnter={(e) => { if (!gamesLoading) e.currentTarget.style.backgroundColor = "#6a9a3e"; }}
-                  onMouseLeave={(e) => { if (!gamesLoading) e.currentTarget.style.backgroundColor = "#81b64c"; }}
-                >
-                  {gamesLoading ? "Loading..." : "Generate"}
-                </button>
               </div>
             </div>
 
@@ -981,16 +978,17 @@ function FormGraph({ games }: { games: GameData[] }) {
   const maxVal = Math.max(...points, 0);
   const range = Math.max(maxVal - minVal, 1);
 
-  // SVG dimensions
+  // SVG dimensions — fixed height to prevent layout jumps on filter change
   const W = 700;
-  const H = 200;
+  const H = 280;
   const padX = 40;
-  const padY = 20;
+  const padTop = 20;
+  const padBottom = 36;
   const graphW = W - padX * 2;
-  const graphH = H - padY * 2;
+  const graphH = H - padTop - padBottom;
 
   const toX = (i: number) => padX + (i / Math.max(n - 1, 1)) * graphW;
-  const toY = (v: number) => padY + graphH - ((v - minVal) / range) * graphH;
+  const toY = (v: number) => padTop + graphH - ((v - minVal) / range) * graphH;
 
   // Zero line Y
   const zeroY = toY(0);
@@ -1052,21 +1050,35 @@ function FormGraph({ games }: { games: GameData[] }) {
       <path d={areaPath} fill={lineColor} opacity={0.08} />
 
       {/* Line */}
-      <path d={linePath} fill="none" stroke={lineColor} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+      <path d={linePath} fill="none" stroke={lineColor} strokeWidth={n > 60 ? 2 : 2.5} strokeLinejoin="round" strokeLinecap="round" />
 
-      {/* Dots for each game */}
+      {/* Dots — show all for small sets, key points only for large sets */}
       {points.map((v, i) => {
+        // For 60+ games, only show dots at: first, last, direction changes, local extremes
+        if (n > 60) {
+          const isFirst = i === 0;
+          const isLast = i === n - 1;
+          const prev = i > 0 ? points[i - 1] : v;
+          const next = i < n - 1 ? points[i + 1] : v;
+          const isExtreme = (v >= prev && v >= next) || (v <= prev && v <= next);
+          const dirChange = i > 0 && i < n - 1 &&
+            Math.sign(v - prev) !== 0 && Math.sign(next - v) !== 0 &&
+            Math.sign(v - prev) !== Math.sign(next - v);
+          if (!isFirst && !isLast && !isExtreme && !dirChange) return null;
+        }
+
         const result = chronological[i].result;
         const dotColor = result === "WIN" ? "#81b64c" : result === "LOSS" ? "#e05252" : "#c27a30";
+        const dotR = n > 60 ? 2.5 : 3.5;
         return (
           <circle
             key={i}
             cx={toX(i)}
             cy={toY(v)}
-            r={3.5}
+            r={dotR}
             fill={dotColor}
             stroke="#262421"
-            strokeWidth={1.5}
+            strokeWidth={1}
           />
         );
       })}
@@ -1082,17 +1094,46 @@ function FormGraph({ games }: { games: GameData[] }) {
         {finalScore > 0 ? `+${finalScore}` : finalScore}
       </text>
 
-      {/* X-axis label */}
-      <text
-        x={W / 2}
-        y={H - 2}
-        textAnchor="middle"
-        fill="#6b6966"
-        fontSize={10}
-        fontWeight={600}
-      >
-        Last {n} games
-      </text>
+      {/* X-axis: score at start, middle, end */}
+      {[0, Math.floor((n - 1) / 2), n - 1].map((idx) => {
+        const score = points[idx];
+        const label = score > 0 ? `+${score}` : `${score}`;
+        return (
+          <g key={`x-${idx}`}>
+            {/* Tick mark */}
+            <line
+              x1={toX(idx)}
+              y1={padTop + graphH}
+              x2={toX(idx)}
+              y2={padTop + graphH + 5}
+              stroke="#4a4745"
+              strokeWidth={1}
+            />
+            {/* Score value */}
+            <text
+              x={toX(idx)}
+              y={padTop + graphH + 18}
+              textAnchor="middle"
+              fill="#9b9895"
+              fontSize={11}
+              fontWeight={700}
+            >
+              {label}
+            </text>
+            {/* Game number */}
+            <text
+              x={toX(idx)}
+              y={padTop + graphH + 30}
+              textAnchor="middle"
+              fill="#6b6966"
+              fontSize={9}
+              fontWeight={600}
+            >
+              {idx === 0 ? "Game 1" : idx === n - 1 ? `Game ${n}` : `Game ${idx + 1}`}
+            </text>
+          </g>
+        );
+      })}
     </svg>
   );
 }

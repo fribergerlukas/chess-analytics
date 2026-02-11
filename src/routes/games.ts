@@ -179,12 +179,12 @@ router.get(
         ...ratedFilter,
       };
 
-      // Always limit to the 40 most recent games
+      const statsLimit = Math.min(Number(req.query.limit) || 40, 200);
       const recentGames = await prisma.game.findMany({
         where: baseWhere,
         select: { id: true, result: true, accuracyWhite: true, accuracyBlack: true },
         orderBy: { endDate: "desc" },
-        take: 40,
+        take: statsLimit,
       });
 
       const counts = { WIN: 0, LOSS: 0, DRAW: 0 };
