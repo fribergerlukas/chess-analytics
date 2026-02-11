@@ -42,6 +42,7 @@ interface PlayerCardProps {
   peakRating?: number;
   title?: string;
   countryCode?: string;
+  avatarUrl?: string;
   arenaStats: ArenaStatsData;
 }
 
@@ -122,6 +123,7 @@ export default function PlayerCard({
   peakRating,
   title,
   countryCode,
+  avatarUrl,
   arenaStats,
 }: PlayerCardProps) {
   const [flipped, setFlipped] = useState(false);
@@ -331,7 +333,7 @@ export default function PlayerCard({
               )}
             </div>
 
-            {/* Chess piece watermark */}
+            {/* Player avatar / chess piece fallback */}
             <div
               style={{
                 flex: 1,
@@ -341,16 +343,31 @@ export default function PlayerCard({
                 overflow: "hidden",
               }}
             >
-              <span
-                style={{
-                  fontSize: 90,
-                  lineHeight: 1,
-                  color: style.accent,
-                  opacity: 0.35,
-                }}
-              >
-                ♚
-              </span>
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={username}
+                  style={{
+                    width: 110,
+                    height: 110,
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    border: `2px solid ${style.accent}50`,
+                    opacity: 0.85,
+                  }}
+                />
+              ) : (
+                <span
+                  style={{
+                    fontSize: 90,
+                    lineHeight: 1,
+                    color: style.accent,
+                    opacity: 0.35,
+                  }}
+                >
+                  ♚
+                </span>
+              )}
             </div>
           </div>
 

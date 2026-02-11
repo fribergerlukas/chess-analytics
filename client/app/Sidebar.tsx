@@ -5,15 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUserContext } from "./UserContext";
 
-const TIME_CATEGORIES = [
-  { label: "Bullet", value: "bullet" },
-  { label: "Blitz", value: "blitz" },
-  { label: "Rapid", value: "rapid" },
-];
-
 const NAV_ITEMS = [
   {
-    label: "Player Card",
+    label: "Arena Player Card",
     href: "/",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -42,10 +36,6 @@ export default function Sidebar() {
     username,
     setUsername,
     queriedUser,
-    timeCategory,
-    setTimeCategory,
-    ratedFilter,
-    setRatedFilter,
     triggerSearch,
   } = useUserContext();
 
@@ -77,12 +67,55 @@ export default function Sidebar() {
           className="font-extrabold"
           style={{ color: "#fff", textDecoration: "none", fontSize: 18, letterSpacing: "-0.01em" }}
         >
-          Chess Analytics
+          Chess Arena
         </Link>
       </div>
 
+      {/* Search section */}
+      <form onSubmit={handleSubmit} style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <input
+          type="text"
+          placeholder="chess.com username..."
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "10px 14px",
+            fontSize: 13,
+            fontWeight: 600,
+            borderRadius: 8,
+            border: "none",
+            backgroundColor: "#1c1b19",
+            color: "#fff",
+            outline: "none",
+          }}
+        />
+        <button
+          type="submit"
+          disabled={!username.trim()}
+          style={{
+            width: "100%",
+            padding: "10px",
+            fontSize: 14,
+            fontWeight: 800,
+            borderRadius: 8,
+            border: "none",
+            backgroundColor: "#81b64c",
+            color: "#fff",
+            cursor: username.trim() ? "pointer" : "not-allowed",
+            opacity: username.trim() ? 1 : 0.5,
+            letterSpacing: "0.01em",
+          }}
+        >
+          Search
+        </button>
+      </form>
+
+      {/* Divider */}
+      <div style={{ borderTop: "1px solid #3d3a37", margin: "4px 16px 4px" }} />
+
       {/* Navigation */}
-      <nav style={{ padding: "0 8px 12px" }}>
+      <nav style={{ padding: "8px 8px 0" }}>
         {NAV_ITEMS.map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
@@ -119,91 +152,6 @@ export default function Sidebar() {
           );
         })}
       </nav>
-
-      {/* Divider */}
-      <div style={{ borderTop: "1px solid #3d3a37", margin: "4px 16px 4px" }} />
-
-      {/* Search section */}
-      <form onSubmit={handleSubmit} style={{ padding: "14px 14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
-        <input
-          type="text"
-          placeholder="chess.com username..."
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          style={{
-            width: "100%",
-            padding: "10px 14px",
-            fontSize: 13,
-            fontWeight: 600,
-            borderRadius: 8,
-            border: "none",
-            backgroundColor: "#1c1b19",
-            color: "#fff",
-            outline: "none",
-          }}
-        />
-        <div style={{ display: "flex", gap: 6 }}>
-          <select
-            value={timeCategory}
-            onChange={(e) => setTimeCategory(e.target.value)}
-            style={{
-              flex: 1,
-              padding: "9px 8px",
-              fontSize: 13,
-              fontWeight: 600,
-              borderRadius: 8,
-              border: "none",
-              backgroundColor: "#1c1b19",
-              color: "#fff",
-              outline: "none",
-            }}
-          >
-            {TIME_CATEGORIES.map((tc) => (
-              <option key={tc.value} value={tc.value}>
-                {tc.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={ratedFilter}
-            onChange={(e) => setRatedFilter(e.target.value)}
-            style={{
-              flex: 1,
-              padding: "9px 8px",
-              fontSize: 13,
-              fontWeight: 600,
-              borderRadius: 8,
-              border: "none",
-              backgroundColor: "#1c1b19",
-              color: "#fff",
-              outline: "none",
-            }}
-          >
-            <option value="all">All</option>
-            <option value="true">Rated</option>
-            <option value="false">Casual</option>
-          </select>
-        </div>
-        <button
-          type="submit"
-          disabled={!username.trim()}
-          style={{
-            width: "100%",
-            padding: "10px",
-            fontSize: 14,
-            fontWeight: 800,
-            borderRadius: 8,
-            border: "none",
-            backgroundColor: "#81b64c",
-            color: "#fff",
-            cursor: username.trim() ? "pointer" : "not-allowed",
-            opacity: username.trim() ? 1 : 0.5,
-            letterSpacing: "0.01em",
-          }}
-        >
-          Search
-        </button>
-      </form>
 
       {/* Active user display */}
       {queriedUser && (

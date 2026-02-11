@@ -23,7 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <title>Chess Analytics</title>
+        <title>Chess Arena</title>
         <meta name="description" content="Chess game statistics dashboard" />
       </head>
       <body

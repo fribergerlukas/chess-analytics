@@ -204,7 +204,7 @@ function formatMoveList(fen: string, uciMoves: string[]): string {
 }
 
 export default function PuzzlesPage() {
-  const { queriedUser, timeCategory, ratedFilter, searchTrigger } = useUserContext();
+  const { queriedUser, searchTrigger } = useUserContext();
 
   // List state
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -298,8 +298,7 @@ export default function PuzzlesPage() {
   const boardDisabled = puzzleCompleted || puzzleFailed || animatingOpponent || animatingSetup;
 
   async function loadPuzzleList(user: string) {
-    const puzzleParams = new URLSearchParams({ limit: "50", timeCategory });
-    if (ratedFilter !== "all") puzzleParams.set("rated", ratedFilter);
+    const puzzleParams = new URLSearchParams({ limit: "50", rated: "true" });
     const res = await fetch(
       `${API_BASE}/users/${encodeURIComponent(user)}/puzzles?${puzzleParams}`
     );
@@ -355,7 +354,7 @@ export default function PuzzlesPage() {
       const importRes = await fetch(`${API_BASE}/import/chesscom`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: user, timeCategory }),
+        body: JSON.stringify({ username: user, rated: true }),
       });
       if (!importRes.ok) {
         const body = await importRes.json().catch(() => null);

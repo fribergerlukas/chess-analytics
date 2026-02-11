@@ -7,10 +7,6 @@ interface UserContextType {
   setUsername: (v: string) => void;
   queriedUser: string;
   setQueriedUser: (v: string) => void;
-  timeCategory: string;
-  setTimeCategory: (v: string) => void;
-  ratedFilter: string;
-  setRatedFilter: (v: string) => void;
   searchTrigger: number;
   triggerSearch: () => void;
 }
@@ -20,8 +16,6 @@ const UserContext = createContext<UserContextType | null>(null);
 export function UserProvider({ children }: { children: ReactNode }) {
   const [username, setUsername] = useState("");
   const [queriedUser, setQueriedUser] = useState("");
-  const [timeCategory, setTimeCategory] = useState("bullet");
-  const [ratedFilter, setRatedFilter] = useState("all");
   const [searchTrigger, setSearchTrigger] = useState(0);
 
   function triggerSearch() {
@@ -38,10 +32,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setUsername,
         queriedUser,
         setQueriedUser,
-        timeCategory,
-        setTimeCategory,
-        ratedFilter,
-        setRatedFilter,
         searchTrigger,
         triggerSearch,
       }}
