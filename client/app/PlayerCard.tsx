@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type Ref } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -31,6 +31,16 @@ export interface ArenaStatsData {
     missedWinRate: number;
     missedSaveRate: number;
   };
+  phaseAccuracy: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
+  phaseAccuracyVsExpected?: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
   gamesAnalyzed: number;
   record?: { wins: number; draws: number; losses: number };
 }
@@ -44,6 +54,8 @@ interface PlayerCardProps {
   countryCode?: string;
   avatarUrl?: string;
   arenaStats: ArenaStatsData;
+  frontFaceRef?: Ref<HTMLDivElement>;
+  statDiffs?: Partial<Record<keyof ArenaStatsData["categories"], number>> & { overall?: number };
 }
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -64,9 +76,10 @@ const TIER_STYLES_SHINY: Record<Tier, TierStyle> = {
     accentDark: "rgba(112,128,144,0.6)",
   },
   gold: {
-    background: "linear-gradient(160deg, #B8860B 0%, #FFD700 100%)",
+    background: "linear-gradient(160deg, #9A7209 0%, #FFD700 45%, #FFF1A0 70%, #FFD700 100%)",
     accent: "#FFF8DC",
     accentDark: "rgba(184,134,11,0.6)",
+    boxShadow: "0 0 18px rgba(255,215,0,0.2)",
   },
   platinum: {
     background: "linear-gradient(160deg, #1a1a2e 0%, #4a0080 100%)",
@@ -78,24 +91,24 @@ const TIER_STYLES_SHINY: Record<Tier, TierStyle> = {
 
 const TIER_STYLES_MATTE: Record<Tier, TierStyle> = {
   bronze: {
-    background: "linear-gradient(160deg, #5C3D2E 0%, #7A5A3E 100%)",
-    accent: "#C4A882",
-    accentDark: "rgba(92,61,46,0.6)",
+    background: "#6B4C38",
+    accent: "#A89070",
+    accentDark: "rgba(107,76,56,0.5)",
   },
   silver: {
-    background: "linear-gradient(160deg, #4E5660 0%, #7A828C 100%)",
-    accent: "#B0B8C0",
-    accentDark: "rgba(78,86,96,0.6)",
+    background: "#5C636B",
+    accent: "#9BA0A6",
+    accentDark: "rgba(92,99,107,0.5)",
   },
   gold: {
-    background: "linear-gradient(160deg, #7A5C10 0%, #A68B2E 100%)",
-    accent: "#D4C48A",
-    accentDark: "rgba(122,92,16,0.6)",
+    background: "#C4A24C",
+    accent: "#FFF3D0",
+    accentDark: "rgba(196,162,76,0.5)",
   },
   platinum: {
-    background: "linear-gradient(160deg, #141420 0%, #302050 100%)",
-    accent: "#B8A060",
-    accentDark: "rgba(48,32,80,0.6)",
+    background: "#252235",
+    accent: "#9A8A5C",
+    accentDark: "rgba(37,34,53,0.5)",
   },
 };
 
@@ -109,7 +122,7 @@ const STAT_LABELS: { key: keyof ArenaStatsData["categories"]; label: string }[] 
   { key: "attacking", label: "ATK" },
   { key: "defending", label: "DEF" },
   { key: "tactics", label: "TAC" },
-  { key: "positional", label: "POS" },
+  { key: "positional", label: "STR" },
   { key: "opening", label: "OPN" },
   { key: "endgame", label: "END" },
 ];
@@ -125,6 +138,8 @@ export default function PlayerCard({
   countryCode,
   avatarUrl,
   arenaStats,
+  frontFaceRef,
+  statDiffs,
 }: PlayerCardProps) {
   const [flipped, setFlipped] = useState(false);
   const { tier, shiny, arenaRating, categories, form, backStats, gamesAnalyzed, record } = arenaStats;
@@ -190,6 +205,7 @@ export default function PlayerCard({
 
         {/* ── FRONT ── */}
         <div
+          ref={frontFaceRef}
           style={{
             position: "absolute",
             width: "100%",
@@ -221,6 +237,7 @@ export default function PlayerCard({
               }}
             >
               <div
+                data-shimmer
                 style={{
                   position: "absolute",
                   top: "-50%",
@@ -249,25 +266,37 @@ export default function PlayerCard({
               }}
             >
               {/* Arena Rating — huge */}
-              <span
-                style={{
-                  fontSize: 52,
-                  fontWeight: 800,
-                  lineHeight: 1,
-                  color: style.accent,
-                }}
-              >
-                {arenaRating}
-              </span>
+              <div style={{ position: "relative", display: "inline-flex", alignItems: "flex-start" }}>
+                <span
+                  style={{
+                    fontSize: 52,
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    color: style.accent,
+                  }}
+                >
+                  {arenaRating}
+                </span>
+                {statDiffs?.overall != null && statDiffs.overall !== 0 && (
+                  <span style={{
+                    position: "absolute", top: 8, right: -26,
+                    fontSize: 14, fontWeight: 900,
+                    color: statDiffs.overall > 0 ? "#4ade80" : "#e05252",
+                    letterSpacing: "-0.02em",
+                  }}>
+                    {statDiffs.overall > 0 ? "+" : ""}{statDiffs.overall}
+                  </span>
+                )}
+              </div>
 
-              {/* Chess rating — small */}
+              {/* Chess rating */}
               <span
                 style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: style.accent,
-                  opacity: 0.7,
-                  marginTop: 2,
+                  fontSize: 14,
+                  fontWeight: 800,
+                  color: "#fff",
+                  opacity: 0.9,
+                  marginTop: 3,
                 }}
               >
                 {chessRating}
@@ -302,23 +331,6 @@ export default function PlayerCard({
                 {TC_ICONS[timeControl]} {timeControl}
               </span>
 
-              <div
-                style={{
-                  width: 24,
-                  height: 1,
-                  backgroundColor: style.accent,
-                  opacity: 0.4,
-                  margin: "4px 0",
-                }}
-              />
-
-              {flagUrl && (
-                <img
-                  src={flagUrl}
-                  alt={countryCode}
-                  style={{ width: 22, height: 15, borderRadius: 2 }}
-                />
-              )}
               {title && (
                 <span
                   style={{
@@ -384,11 +396,21 @@ export default function PlayerCard({
             {/* Name bar */}
             <div
               style={{
-                textAlign: "center",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
                 borderBottom: `1px solid ${style.accent}40`,
                 paddingBottom: 6,
               }}
             >
+              {flagUrl && (
+                <img
+                  src={flagUrl}
+                  alt={countryCode}
+                  style={{ width: 18, height: 13, borderRadius: 2, flexShrink: 0 }}
+                />
+              )}
               <p
                 style={{
                   fontSize: 15,
@@ -426,14 +448,25 @@ export default function PlayerCard({
                       alignItems: "center",
                     }}
                   >
-                    <span
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 800,
-                        color: "#fff",
-                      }}
-                    >
-                      {displayStat(s.key)}
+                    <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 800,
+                          color: "#fff",
+                          minWidth: 22,
+                        }}
+                      >
+                        {displayStat(s.key)}
+                      </span>
+                      {statDiffs && statDiffs[s.key as keyof typeof statDiffs] != null && (statDiffs[s.key as keyof typeof statDiffs] as number) !== 0 && (() => {
+                        const diff = statDiffs[s.key as keyof typeof statDiffs] as number;
+                        return (
+                          <span style={{ fontSize: 9, fontWeight: 800, color: diff > 0 ? "#4ade80" : "#e05252", minWidth: 18 }}>
+                            {diff > 0 ? "+" : ""}{diff}
+                          </span>
+                        );
+                      })()}
                     </span>
                     <span
                       style={{
@@ -469,14 +502,25 @@ export default function PlayerCard({
                       alignItems: "center",
                     }}
                   >
-                    <span
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 800,
-                        color: "#fff",
-                      }}
-                    >
-                      {displayStat(s.key)}
+                    <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                      <span
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 800,
+                          color: "#fff",
+                          minWidth: 22,
+                        }}
+                      >
+                        {displayStat(s.key)}
+                      </span>
+                      {statDiffs && statDiffs[s.key as keyof typeof statDiffs] != null && (statDiffs[s.key as keyof typeof statDiffs] as number) !== 0 && (() => {
+                        const diff = statDiffs[s.key as keyof typeof statDiffs] as number;
+                        return (
+                          <span style={{ fontSize: 9, fontWeight: 800, color: diff > 0 ? "#4ade80" : "#e05252", minWidth: 18 }}>
+                            {diff > 0 ? "+" : ""}{diff}
+                          </span>
+                        );
+                      })()}
                     </span>
                     <span
                       style={{

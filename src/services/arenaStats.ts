@@ -1,4 +1,5 @@
 import { Side } from "@prisma/client";
+import { cpToWinPercent, moveAccuracy, harmonicMean } from "./accuracy";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -31,6 +32,16 @@ export interface ArenaStatsResponse {
     blunderRate: number;
     missedWinRate: number;
     missedSaveRate: number;
+  };
+  phaseAccuracy: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
+  phaseAccuracyVsExpected: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
   };
   gamesAnalyzed: number;
   record?: { wins: number; draws: number; losses: number };
@@ -257,6 +268,76 @@ const EXPECTED_MISSED_WIN_CURVE: RatePoint[] = [
   { rating: 3500, rate: 0.2 },
 ];
 
+// Expected per-phase harmonic mean accuracy by rating
+// Data-driven: collected from 33 players across 12 rating brackets via
+// collect-phase-data.ts + build-phase-curves.ts, then smoothed for monotonicity.
+//
+// Raw data anchors (avg rating → opening / middlegame / endgame):
+//   526 → 81.7 / 74.9 / 77.9    886 → 88.2 / 74.7 / 77.8
+//  1094 → 85.5 / 65.1 / 88.6   1314 → 86.0 / 71.3 / 73.9
+//  1545 → 89.6 / 86.3 / 89.0   1752 → 91.4 / 79.9 / 89.4
+//  1887 → 92.2 / 83.5 / 92.0   2103 → 95.5 / 87.8 / 90.6
+//  2294 → 92.5 / 83.4 / 88.6   2541 → 94.3 / 87.8 / 87.9
+//  2714 → 94.6 / 88.2 / 85.7   2962 → 95.5 / 86.6 / 86.7
+//
+// Opening accuracy is highest across all levels (book moves help).
+// Middlegame accuracy is lowest (complex positions, most room for error).
+// Endgame accuracy plateaus ~87-90% at top levels (complex technical endgames).
+
+const EXPECTED_OPENING_PHASE_ACCURACY_CURVE: RatePoint[] = [
+  { rating: 0,    rate: 78 },
+  { rating: 500,  rate: 82 },
+  { rating: 800,  rate: 85 },
+  { rating: 1000, rate: 86 },
+  { rating: 1200, rate: 87 },
+  { rating: 1400, rate: 88 },
+  { rating: 1600, rate: 90 },
+  { rating: 1800, rate: 91.5 },
+  { rating: 2000, rate: 93 },
+  { rating: 2200, rate: 94 },
+  { rating: 2400, rate: 94.5 },
+  { rating: 2600, rate: 95 },
+  { rating: 2800, rate: 95.5 },
+  { rating: 3000, rate: 96 },
+  { rating: 3500, rate: 97 },
+];
+
+const EXPECTED_MIDDLEGAME_ACCURACY_CURVE: RatePoint[] = [
+  { rating: 0,    rate: 68 },
+  { rating: 500,  rate: 72 },
+  { rating: 800,  rate: 74 },
+  { rating: 1000, rate: 75 },
+  { rating: 1200, rate: 76 },
+  { rating: 1400, rate: 78 },
+  { rating: 1600, rate: 80 },
+  { rating: 1800, rate: 82 },
+  { rating: 2000, rate: 84 },
+  { rating: 2200, rate: 86 },
+  { rating: 2400, rate: 87.5 },
+  { rating: 2600, rate: 88 },
+  { rating: 2800, rate: 88.5 },
+  { rating: 3000, rate: 89 },
+  { rating: 3500, rate: 90 },
+];
+
+const EXPECTED_ENDGAME_PHASE_ACCURACY_CURVE: RatePoint[] = [
+  { rating: 0,    rate: 72 },
+  { rating: 500,  rate: 76 },
+  { rating: 800,  rate: 78 },
+  { rating: 1000, rate: 79 },
+  { rating: 1200, rate: 80 },
+  { rating: 1400, rate: 82 },
+  { rating: 1600, rate: 84 },
+  { rating: 1800, rate: 86 },
+  { rating: 2000, rate: 88 },
+  { rating: 2200, rate: 89 },
+  { rating: 2400, rate: 89.5 },
+  { rating: 2600, rate: 89 },
+  { rating: 2800, rate: 88 },
+  { rating: 3000, rate: 87 },
+  { rating: 3500, rate: 87 },
+];
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function clamp(val: number, min: number, max: number): number {
@@ -417,7 +498,7 @@ function classifyPosition(pos: PositionRow, playerSideIsWhite: boolean): Categor
   const evalCp = pos.eval;
   if (evalCp == null) return ["positional"];
 
-  const playerEval = playerSideIsWhite ? evalCp * 100 : -evalCp * 100;
+  const playerEval = playerSideIsWhite ? evalCp : -evalCp;
   const categories: CategoryName[] = [];
 
   const isOpening = pos.ply <= 24;
@@ -480,6 +561,13 @@ export function computeArenaStats(
   let missedWinCount = 0;
   let missedSaveCount = 0;
 
+  // Per-game per-phase accuracy: harmonic mean of move accuracies per phase (lichess method)
+  const phaseGameAccuracies: Record<"opening" | "middlegame" | "endgame", number[]> = {
+    opening: [],
+    middlegame: [],
+    endgame: [],
+  };
+
   // Defending-specific counters
   let broadMissedSaves = 0;       // losing (eval <= -150) AND cpLoss >= 100
   let losingTotal = 0;            // all positions where eval <= -150
@@ -519,7 +607,7 @@ export function computeArenaStats(
 
     // The mover is the opposite of sideToMove (sideToMove = who moves NEXT)
     const moverIsWhite = pos.sideToMove === "BLACK";
-    const playerEvalCp = moverIsWhite ? pos.eval * 100 : -pos.eval * 100;
+    const playerEvalCp = moverIsWhite ? pos.eval : -pos.eval;
 
     // Overlapping classification — position can belong to multiple categories
     const categories = classifyPosition(pos, moverIsWhite);
@@ -586,6 +674,53 @@ export function computeArenaStats(
     if (pos.classification === "BLUNDER") blunderCount++;
     if (playerEvalCp >= 200 && pos.cpLoss >= 200) missedWinCount++;
     if (playerEvalCp <= -200 && pos.cpLoss >= 200) missedSaveCount++;
+  }
+
+  // ── Per-phase accuracy (move accuracy via win% change) ──
+  const phaseGamePositions: Record<number, PositionRow[]> = {};
+  for (const pos of positions) {
+    if (pos.eval == null) continue;
+    if (!phaseGamePositions[pos.gameId]) phaseGamePositions[pos.gameId] = [];
+    phaseGamePositions[pos.gameId].push(pos);
+  }
+
+  for (const gameIdStr of Object.keys(phaseGamePositions)) {
+    const gameId = Number(gameIdStr);
+    const gamePos = phaseGamePositions[gameId];
+    const playerIsWhite = gamePlayerSide?.[gameId] === "WHITE";
+    const sorted = gamePos.sort((a, b) => a.ply - b.ply);
+
+    // Collect per-move accuracies grouped by phase
+    const phaseAccs: Record<"opening" | "middlegame" | "endgame", number[]> = {
+      opening: [], middlegame: [], endgame: [],
+    };
+
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const curr = sorted[i];
+      const next = sorted[i + 1];
+      const moverIsWhite = curr.sideToMove === "WHITE";
+      if (moverIsWhite !== playerIsWhite) continue;
+
+      const evalBefore = moverIsWhite ? curr.eval! : -curr.eval!;
+      const evalAfter = moverIsWhite ? next.eval! : -next.eval!;
+      const winBefore = cpToWinPercent(evalBefore);
+      const winAfter = cpToWinPercent(evalAfter);
+      const acc = moveAccuracy(winBefore, winAfter);
+
+      const isOpening = curr.ply <= 24;
+      const isEndgame = !isOpening && isEndgamePosition(curr.fen);
+
+      if (isOpening) phaseAccs.opening.push(acc);
+      else if (isEndgame) phaseAccs.endgame.push(acc);
+      else phaseAccs.middlegame.push(acc);
+    }
+
+    // Harmonic mean per phase for this game (lichess method)
+    for (const phase of ["opening", "middlegame", "endgame"] as const) {
+      if (phaseAccs[phase].length > 0) {
+        phaseGameAccuracies[phase].push(harmonicMean(phaseAccs[phase]));
+      }
+    }
   }
 
   // ── Success rates & percentages ──
@@ -663,7 +798,7 @@ export function computeArenaStats(
   for (const pos of positions) {
     if (pos.eval == null || pos.cpLoss == null) continue;
     const moverIsWhite = pos.sideToMove === "BLACK";
-    const pEval = moverIsWhite ? pos.eval * 100 : -pos.eval * 100;
+    const pEval = moverIsWhite ? pos.eval : -pos.eval;
     if (!gamePositions[pos.gameId]) gamePositions[pos.gameId] = [];
     gamePositions[pos.gameId].push({ ...pos, playerEvalCp: pEval });
   }
@@ -742,8 +877,8 @@ export function computeArenaStats(
         ? gamePlayerSide[gId] === "WHITE"
         : closest.sideToMove === "BLACK";
       const evalForPlayer = playerIsWhite
-        ? closest.eval * 100
-        : -closest.eval * 100;
+        ? closest.eval
+        : -closest.eval;
       gamesWithEval++;
       if (evalForPlayer >= 0) gamesAhead++;
     }
@@ -775,7 +910,7 @@ export function computeArenaStats(
     if (pos.eval == null) continue;
     if (!isEndgamePosition(pos.fen)) continue;
     const moverIsWhite = pos.sideToMove === "BLACK";
-    const pEval = moverIsWhite ? pos.eval * 100 : -pos.eval * 100;
+    const pEval = moverIsWhite ? pos.eval : -pos.eval;
     if (pEval >= 150) gamesWithWinningEndgame.add(pos.gameId);
     if (pEval <= -150) gamesWithLosingEndgame.add(pos.gameId);
   }
@@ -892,15 +1027,15 @@ export function computeArenaStats(
   const sortedGames = [...games].sort((a, b) => b.endDate.getTime() - a.endDate.getTime());
   const last5 = sortedGames.slice(0, 5);
 
-  function gameAccuracy(g: GameRow): number | null {
+  function singleGameAccuracy(g: GameRow): number | null {
     if (g.accuracyWhite != null && g.accuracyBlack != null) {
       return (g.accuracyWhite + g.accuracyBlack) / 2;
     }
     return g.accuracyWhite ?? g.accuracyBlack ?? null;
   }
 
-  const recentAccs = last5.map(gameAccuracy).filter((a): a is number => a != null);
-  const allAccs = games.map(gameAccuracy).filter((a): a is number => a != null);
+  const recentAccs = last5.map(singleGameAccuracy).filter((a): a is number => a != null);
+  const allAccs = games.map(singleGameAccuracy).filter((a): a is number => a != null);
 
   let form = 0;
   if (recentAccs.length > 0 && allAccs.length > 0) {
@@ -945,6 +1080,37 @@ export function computeArenaStats(
       blunderRate: totalPositions > 0 ? round2((blunderCount / totalPositions) * 100) : 0,
       missedWinRate: totalPositions > 0 ? round2((missedWinCount / totalPositions) * 100) : 0,
       missedSaveRate: totalPositions > 0 ? round2((missedSaveCount / totalPositions) * 100) : 0,
+    },
+    phaseAccuracy: {
+      opening: phaseGameAccuracies.opening.length > 0
+        ? round2(phaseGameAccuracies.opening.reduce((a, b) => a + b, 0) / phaseGameAccuracies.opening.length)
+        : null,
+      middlegame: phaseGameAccuracies.middlegame.length > 0
+        ? round2(phaseGameAccuracies.middlegame.reduce((a, b) => a + b, 0) / phaseGameAccuracies.middlegame.length)
+        : null,
+      endgame: phaseGameAccuracies.endgame.length > 0
+        ? round2(phaseGameAccuracies.endgame.reduce((a, b) => a + b, 0) / phaseGameAccuracies.endgame.length)
+        : null,
+    },
+    phaseAccuracyVsExpected: {
+      opening: phaseGameAccuracies.opening.length > 0
+        ? round1(
+            phaseGameAccuracies.opening.reduce((a, b) => a + b, 0) / phaseGameAccuracies.opening.length
+            - interpolateCurve(EXPECTED_OPENING_PHASE_ACCURACY_CURVE, chessRating)
+          )
+        : null,
+      middlegame: phaseGameAccuracies.middlegame.length > 0
+        ? round1(
+            phaseGameAccuracies.middlegame.reduce((a, b) => a + b, 0) / phaseGameAccuracies.middlegame.length
+            - interpolateCurve(EXPECTED_MIDDLEGAME_ACCURACY_CURVE, chessRating)
+          )
+        : null,
+      endgame: phaseGameAccuracies.endgame.length > 0
+        ? round1(
+            phaseGameAccuracies.endgame.reduce((a, b) => a + b, 0) / phaseGameAccuracies.endgame.length
+            - interpolateCurve(EXPECTED_ENDGAME_PHASE_ACCURACY_CURVE, chessRating)
+          )
+        : null,
     },
     gamesAnalyzed: games.length,
   };
