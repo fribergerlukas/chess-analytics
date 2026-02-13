@@ -541,6 +541,40 @@ function classifyPosition(pos: PositionRow, playerSideIsWhite: boolean): Categor
   return categories;
 }
 
+// ── Target Stats (pure math, no DB) ────────────────────────────────────
+
+export interface TargetStatsResult {
+  targetArenaRating: number;
+  targetTier: Tier;
+  targetShiny: boolean;
+  expectedPhaseAccuracy: {
+    opening: number;
+    middlegame: number;
+    endgame: number;
+  };
+}
+
+export function computeTargetStats(
+  targetChessRating: number,
+  timeCategory: string
+): TargetStatsResult {
+  const targetArenaRating = computeArenaRating(targetChessRating, timeCategory);
+  const targetTier = getTierFromArena(targetArenaRating);
+  const targetShiny =
+    targetTier === "platinum" || targetArenaRating >= SHINY_THRESHOLDS[targetTier];
+
+  return {
+    targetArenaRating,
+    targetTier,
+    targetShiny,
+    expectedPhaseAccuracy: {
+      opening: round1(interpolateCurve(EXPECTED_OPENING_PHASE_ACCURACY_CURVE, targetChessRating)),
+      middlegame: round1(interpolateCurve(EXPECTED_MIDDLEGAME_ACCURACY_CURVE, targetChessRating)),
+      endgame: round1(interpolateCurve(EXPECTED_ENDGAME_PHASE_ACCURACY_CURVE, targetChessRating)),
+    },
+  };
+}
+
 // ── Main Computation ───────────────────────────────────────────────────
 
 export function computeArenaStats(

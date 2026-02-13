@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import prisma from "../lib/prisma";
 import { matchesCategory } from "../lib/timeControl";
-import { computeArenaStats } from "../services/arenaStats";
+import { computeArenaStats, computeTargetStats } from "../services/arenaStats";
 
 const router = Router();
 
@@ -129,6 +129,34 @@ router.get(
     } catch (err) {
       next(err);
     }
+  }
+);
+
+/**
+ * GET /target-stats
+ *
+ * Query params:
+ *   targetRating  — target chess rating (number, required)
+ *   timeCategory  — "bullet" | "blitz" | "rapid" (required)
+ */
+router.get(
+  "/target-stats",
+  (req: Request, res: Response) => {
+    const { targetRating, timeCategory } = req.query;
+
+    if (!timeCategory || typeof timeCategory !== "string") {
+      res.status(400).json({ error: "timeCategory query param is required" });
+      return;
+    }
+
+    const rating = Number(targetRating);
+    if (!targetRating || isNaN(rating)) {
+      res.status(400).json({ error: "targetRating query param is required (number)" });
+      return;
+    }
+
+    const result = computeTargetStats(rating, timeCategory.toLowerCase());
+    res.json(result);
   }
 );
 

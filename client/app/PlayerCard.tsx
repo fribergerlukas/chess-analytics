@@ -71,6 +71,9 @@ interface PlayerCardProps {
   arenaStats: ArenaStatsData;
   frontFaceRef?: Ref<HTMLDivElement>;
   statDiffs?: Partial<Record<keyof ArenaStatsData["categories"], number>> & { overall?: number };
+  editableRating?: boolean;
+  onRatingChange?: (rating: number) => void;
+  ratingPlaceholder?: string;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -155,6 +158,9 @@ export default function PlayerCard({
   arenaStats,
   frontFaceRef,
   statDiffs,
+  editableRating,
+  onRatingChange,
+  ratingPlaceholder,
 }: PlayerCardProps) {
   const [flipped, setFlipped] = useState(false);
   const { tier, shiny, arenaRating, categories, form, backStats, gamesAnalyzed, record } = arenaStats;
@@ -266,6 +272,23 @@ export default function PlayerCard({
             </div>
           )}
 
+          {/* Target label — only on editable (target) cards */}
+          {editableRating && (
+            <div style={{
+              textAlign: "center",
+              paddingTop: 4,
+              paddingBottom: 0,
+              fontSize: 9,
+              fontWeight: 800,
+              color: "#fff",
+              opacity: 0.5,
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+            }}>
+              Target
+            </div>
+          )}
+
           {/* Top section */}
           <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
             {/* Left strip — arena rating, chess rating, peak, time control, flag, title */}
@@ -292,30 +315,51 @@ export default function PlayerCard({
                 >
                   {arenaRating}
                 </span>
-                {statDiffs?.overall != null && statDiffs.overall !== 0 && (
-                  <span style={{
-                    position: "absolute", top: 8, right: -26,
-                    fontSize: 14, fontWeight: 900,
-                    color: statDiffs.overall > 0 ? "#4ade80" : "#e05252",
-                    letterSpacing: "-0.02em",
-                  }}>
-                    {statDiffs.overall > 0 ? "+" : ""}{statDiffs.overall}
-                  </span>
-                )}
               </div>
 
               {/* Chess rating */}
-              <span
-                style={{
-                  fontSize: 14,
-                  fontWeight: 800,
-                  color: "#fff",
-                  opacity: 0.9,
-                  marginTop: 3,
-                }}
-              >
-                {chessRating}
-              </span>
+              {editableRating ? (
+                <input
+                  className="rating-spinner"
+                  type="number"
+                  min={500}
+                  max={3500}
+                  step={50}
+                  value={chessRating || ""}
+                  placeholder={ratingPlaceholder || "2000"}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    onRatingChange?.(v === "" ? 0 : Number(v));
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    width: 64,
+                    fontSize: 14,
+                    fontWeight: 800,
+                    color: "#fff",
+                    opacity: 0.9,
+                    marginTop: 3,
+                    background: "transparent",
+                    border: "1.5px solid #000",
+                    borderRadius: 4,
+                    outline: "none",
+                    textAlign: "center",
+                    padding: "2px 4px",
+                  }}
+                />
+              ) : (
+                <span
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 800,
+                    color: "#fff",
+                    opacity: 0.9,
+                    marginTop: 3,
+                  }}
+                >
+                  {chessRating}
+                </span>
+              )}
 
               {/* Peak rating */}
               {peakRating != null && (
@@ -463,26 +507,47 @@ export default function PlayerCard({
                       alignItems: "center",
                     }}
                   >
-                    <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                      <span
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 800,
-                          color: "#fff",
-                          minWidth: 22,
-                        }}
-                      >
-                        {displayStat(s.key)}
-                      </span>
-                      {statDiffs && statDiffs[s.key as keyof typeof statDiffs] != null && (statDiffs[s.key as keyof typeof statDiffs] as number) !== 0 && (() => {
-                        const diff = statDiffs[s.key as keyof typeof statDiffs] as number;
-                        return (
-                          <span style={{ fontSize: 9, fontWeight: 800, color: diff > 0 ? "#4ade80" : "#e05252", minWidth: 18 }}>
-                            {diff > 0 ? "+" : ""}{diff}
+                    {(() => {
+                      const diff = statDiffs?.[s.key as keyof typeof statDiffs] as number | undefined;
+                      const hasDiff = diff != null;
+                      const reached = hasDiff && diff <= 0;
+                      const brightBg = shiny && (tier === "gold" || tier === "silver");
+                      const statColor = hasDiff ? (reached ? "#00ff55" : "#ff5050") : "#fff";
+                      return (
+                        <span style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 2,
+                          filter: hasDiff ? (brightBg ? "saturate(3) brightness(1.3)" : "saturate(2.5) brightness(1.15)") : undefined,
+                        }}>
+                          <span
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 900,
+                              color: statColor,
+                              minWidth: 22,
+                              backgroundColor: hasDiff ? (brightBg ? "#000000b0" : "#00000070") : undefined,
+                              borderRadius: 4,
+                              padding: hasDiff ? "1px 5px" : undefined,
+                            }}
+                          >
+                            {displayStat(s.key)}
                           </span>
-                        );
-                      })()}
-                    </span>
+                          {hasDiff && !reached && diff > 0 && (
+                            <span style={{
+                              fontSize: 10,
+                              fontWeight: 900,
+                              color: "#ff5050",
+                              backgroundColor: brightBg ? "#000000b0" : undefined,
+                              borderRadius: brightBg ? 3 : undefined,
+                              padding: brightBg ? "0 3px" : undefined,
+                            }}>
+                              +{diff}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })()}
                     <span
                       style={{
                         fontSize: 10,
@@ -517,26 +582,47 @@ export default function PlayerCard({
                       alignItems: "center",
                     }}
                   >
-                    <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                      <span
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 800,
-                          color: "#fff",
-                          minWidth: 22,
-                        }}
-                      >
-                        {displayStat(s.key)}
-                      </span>
-                      {statDiffs && statDiffs[s.key as keyof typeof statDiffs] != null && (statDiffs[s.key as keyof typeof statDiffs] as number) !== 0 && (() => {
-                        const diff = statDiffs[s.key as keyof typeof statDiffs] as number;
-                        return (
-                          <span style={{ fontSize: 9, fontWeight: 800, color: diff > 0 ? "#4ade80" : "#e05252", minWidth: 18 }}>
-                            {diff > 0 ? "+" : ""}{diff}
+                    {(() => {
+                      const diff = statDiffs?.[s.key as keyof typeof statDiffs] as number | undefined;
+                      const hasDiff = diff != null;
+                      const reached = hasDiff && diff <= 0;
+                      const brightBg = shiny && (tier === "gold" || tier === "silver");
+                      const statColor = hasDiff ? (reached ? "#00ff55" : "#ff5050") : "#fff";
+                      return (
+                        <span style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 2,
+                          filter: hasDiff ? (brightBg ? "saturate(3) brightness(1.3)" : "saturate(2.5) brightness(1.15)") : undefined,
+                        }}>
+                          <span
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 900,
+                              color: statColor,
+                              minWidth: 22,
+                              backgroundColor: hasDiff ? (brightBg ? "#000000b0" : "#00000070") : undefined,
+                              borderRadius: 4,
+                              padding: hasDiff ? "1px 5px" : undefined,
+                            }}
+                          >
+                            {displayStat(s.key)}
                           </span>
-                        );
-                      })()}
-                    </span>
+                          {hasDiff && !reached && diff > 0 && (
+                            <span style={{
+                              fontSize: 10,
+                              fontWeight: 900,
+                              color: "#ff5050",
+                              backgroundColor: brightBg ? "#000000b0" : undefined,
+                              borderRadius: brightBg ? 3 : undefined,
+                              padding: brightBg ? "0 3px" : undefined,
+                            }}>
+                              +{diff}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })()}
                     <span
                       style={{
                         fontSize: 10,

@@ -12,6 +12,13 @@ const Chessboard = dynamic(
   { ssr: false }
 );
 
+interface TargetStatsData {
+  targetArenaRating: number;
+  targetTier: string;
+  targetShiny: boolean;
+  expectedPhaseAccuracy: { opening: number; middlegame: number; endgame: number };
+}
+
 interface StatsData {
   totalGames: number;
   results: {
@@ -77,6 +84,9 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [freePage, setFreePage] = useState(0);
   const [premiumPage, setPremiumPage] = useState(0);
+  const [targetRating, setTargetRating] = useState<number | null>(null);
+  const [targetStats, setTargetStats] = useState<TargetStatsData | null>(null);
+  const targetDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const lastTriggerRef = useRef(0);
 
@@ -274,6 +284,14 @@ export default function Home() {
       if (profile?.title) arenaParams.set("title", profile.title);
       if (gameRatedFilter !== "all") arenaParams.set("rated", gameRatedFilter);
 
+      // Build target-stats fetch if target rating is set
+      const targetFetchPromise = targetRating != null
+        ? fetch(`${API_BASE}/target-stats?${new URLSearchParams({
+            targetRating: String(targetRating),
+            timeCategory: gameTimeCategory,
+          })}`)
+        : null;
+
       const [statsRes, gamesRes, arenaRes] = await Promise.all([
         fetch(`${API_BASE}/users/${encodeURIComponent(queriedUser)}/stats?${statsParams}`),
         fetch(`${API_BASE}/users/${encodeURIComponent(queriedUser)}/games?${new URLSearchParams({
@@ -290,6 +308,10 @@ export default function Home() {
         const arenaStats: ArenaStatsData = await arenaRes.json();
         if (activeCard.arenaStats.record) arenaStats.record = activeCard.arenaStats.record;
         setCards((prev) => prev.map((c, i) => i === activeIndex ? { ...c, arenaStats } : c));
+      }
+      if (targetFetchPromise) {
+        const targetRes = await targetFetchPromise;
+        if (targetRes.ok) setTargetStats(await targetRes.json());
       }
     } catch {
       // Non-critical
@@ -335,6 +357,29 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameTimeCategory, gameRatedFilter, gameLimit]);
 
+  // Fetch target stats (debounced)
+  useEffect(() => {
+    if (targetDebounceRef.current) clearTimeout(targetDebounceRef.current);
+    if (targetRating == null || cards.length === 0) {
+      setTargetStats(null);
+      return;
+    }
+    const activeCard = cards[activeIndex];
+    if (!activeCard) return;
+    targetDebounceRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({
+          targetRating: String(targetRating),
+          timeCategory: activeCard.timeControl,
+        });
+        const res = await fetch(`${API_BASE}/target-stats?${params}`);
+        if (res.ok) setTargetStats(await res.json());
+      } catch { /* non-critical */ }
+    }, 300);
+    return () => { if (targetDebounceRef.current) clearTimeout(targetDebounceRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetRating, activeIndex, cards]);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#312e2b", color: "#fff" }}>
       <main className="mx-auto max-w-5xl px-6 py-10 space-y-8">
@@ -362,158 +407,240 @@ export default function Home() {
         )}
 
         {/* Player Cards — Main + Compare */}
-        {cards.length > 0 && !loading && (
-          <div className="flex justify-center items-center gap-10">
-            {/* ── Main player carousel ── */}
-            <div className="flex items-center gap-4">
-              {/* Left arrow */}
-              {cards.length > 1 && (
-                <button
-                  onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
-                  disabled={activeIndex === 0}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    backgroundColor: activeIndex === 0 ? "#3d3a37" : "#4a4745",
-                    color: activeIndex === 0 ? "#6b6966" : "#d1cfcc",
-                    border: "none",
-                    cursor: activeIndex === 0 ? "default" : "pointer",
-                    fontSize: 20,
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transition: "all 0.2s ease",
-                    flexShrink: 0,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeIndex !== 0) e.currentTarget.style.backgroundColor = "#5a5755";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeIndex !== 0) e.currentTarget.style.backgroundColor = "#4a4745";
-                  }}
-                >
-                  &#8249;
-                </button>
-              )}
+        {cards.length > 0 && !loading && (() => {
+          const activeCard = cards[activeIndex];
+          const currentArena = activeCard?.arenaStats.arenaRating ?? 0;
+          const currentTier = activeCard?.arenaStats.tier ?? "bronze";
+          const currentCategories = activeCard?.arenaStats.categories;
+          const currentRating = activeCard?.chessRating ?? 0;
 
-              {/* Card stack */}
-              <div style={{ position: "relative", width: 240, height: 360 }}>
-                {cards.map((card, i) => {
-                  const offset = i - activeIndex;
-                  if (offset < 0) return null;
-                  const zIndex = cards.length - offset;
-                  const translateX = offset * 30;
-                  const scale = 1 - offset * 0.05;
-                  const opacity = offset === 0 ? 1 : Math.max(0.4, 1 - offset * 0.3);
+          // Build fictive target card arenaStats
+          const buildTargetArenaStats = (): ArenaStatsData | null => {
+            if (!targetStats) return null;
+            const tRating = targetStats.targetArenaRating;
+            const catKeys = ["attacking", "defending", "tactics", "positional", "opening", "endgame"] as const;
+            const cats = {} as ArenaStatsData["categories"];
+            for (const key of catKeys) {
+              cats[key] = { stat: tRating, percentage: 0, successRate: 0 };
+            }
+            return {
+              arenaRating: tRating,
+              tier: targetStats.targetTier as ArenaStatsData["tier"],
+              shiny: targetStats.targetShiny,
+              categories: cats,
+              form: 0,
+              backStats: { accuracyOverall: null, accuracyWhite: null, accuracyBlack: null, blunderRate: 0, missedWinRate: 0, missedSaveRate: 0 },
+              phaseAccuracy: {
+                opening: targetStats.expectedPhaseAccuracy.opening,
+                middlegame: targetStats.expectedPhaseAccuracy.middlegame,
+                endgame: targetStats.expectedPhaseAccuracy.endgame,
+              },
+              gamesAnalyzed: 0,
+            };
+          };
 
-                  return (
-                    <div
-                      key={card.timeControl}
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        zIndex,
-                        transform: `translateX(${translateX}px) scale(${scale})`,
-                        opacity,
-                        transition: "all 0.4s ease",
-                        transformOrigin: "left center",
-                        pointerEvents: offset === 0 ? "auto" : "none",
-                      }}
-                    >
-                      <PlayerCard
-                        username={queriedUser}
-                        timeControl={card.timeControl}
-                        chessRating={card.chessRating}
-                        peakRating={card.peakRating}
-                        title={profile?.title}
-                        countryCode={profile?.countryCode}
-                        avatarUrl={profile?.avatarUrl}
-                        arenaStats={card.arenaStats}
-                        frontFaceRef={offset === 0 ? cardFrontRef : undefined}
-                      />
-                    </div>
-                  );
-                })}
+          const buildStatDiffs = () => {
+            if (!targetStats || !currentCategories) return undefined;
+            const tRating = targetStats.targetArenaRating;
+            const form = activeCard?.arenaStats.form ?? 0;
+            const catDiff = (key: keyof typeof currentCategories) =>
+              tRating - ((currentCategories[key]?.stat ?? currentArena) + form);
+            return {
+              overall: tRating - (currentArena + form),
+              attacking: catDiff("attacking"),
+              defending: catDiff("defending"),
+              tactics: catDiff("tactics"),
+              positional: catDiff("positional"),
+              opening: catDiff("opening"),
+              endgame: catDiff("endgame"),
+            };
+          };
+
+          const fictiveStats = buildTargetArenaStats();
+          const statDiffs = buildStatDiffs();
+
+          const handleRatingChange = (r: number) => {
+            setTargetRating(r === 0 ? null : r);
+          };
+
+          return (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+
+            {/* Cards row */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "start", gap: 144 }}>
+
+              {/* ── Main player carousel ── */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {/* Left arrow */}
+                {cards.length > 1 && (
+                  <button
+                    onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
+                    disabled={activeIndex === 0}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      backgroundColor: "transparent",
+                      color: activeIndex === 0 ? "#4a4745" : "#9b9895",
+                      border: activeIndex === 0 ? "1px solid #3d3a3700" : "1px solid #4a474540",
+                      cursor: activeIndex === 0 ? "default" : "pointer",
+                      fontSize: 16,
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      transition: "all 0.2s ease",
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (activeIndex !== 0) { e.currentTarget.style.color = "#d1cfcc"; e.currentTarget.style.borderColor = "#6b696640"; }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeIndex !== 0) { e.currentTarget.style.color = "#9b9895"; e.currentTarget.style.borderColor = "#4a474540"; }
+                    }}
+                  >
+                    &#8249;
+                  </button>
+                )}
+
+                {/* Card stack */}
+                <div style={{ position: "relative", width: 240, height: 360 }}>
+                  {cards.map((card, i) => {
+                    const offset = i - activeIndex;
+                    if (offset < 0) return null;
+                    const zIndex = cards.length - offset;
+                    const translateX = offset * 44;
+                    const scale = 1 - offset * 0.04;
+                    const cardOpacity = offset === 0 ? 1 : Math.max(0.3, 1 - offset * 0.35);
+
+                    return (
+                      <div
+                        key={card.timeControl}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          zIndex,
+                          transform: `translateX(${translateX}px) scale(${scale})`,
+                          opacity: cardOpacity,
+                          transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+                          transformOrigin: "left center",
+                          pointerEvents: offset === 0 ? "auto" : "none",
+                        }}
+                      >
+                        <PlayerCard
+                          username={queriedUser}
+                          timeControl={card.timeControl}
+                          chessRating={card.chessRating}
+                          peakRating={card.peakRating}
+                          title={profile?.title}
+                          countryCode={profile?.countryCode}
+                          avatarUrl={profile?.avatarUrl}
+                          arenaStats={card.arenaStats}
+                          frontFaceRef={offset === 0 ? cardFrontRef : undefined}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Right arrow */}
+                {cards.length > 1 && (
+                  <button
+                    onClick={() => setActiveIndex((i) => Math.min(cards.length - 1, i + 1))}
+                    disabled={activeIndex === cards.length - 1}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      backgroundColor: "transparent",
+                      color: activeIndex === cards.length - 1 ? "#4a4745" : "#9b9895",
+                      border: activeIndex === cards.length - 1 ? "1px solid #3d3a3700" : "1px solid #4a474540",
+                      cursor: activeIndex === cards.length - 1 ? "default" : "pointer",
+                      fontSize: 16,
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      transition: "all 0.2s ease",
+                      flexShrink: 0,
+                      marginLeft: (cards.length - 1 - activeIndex) * 24,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (activeIndex !== cards.length - 1) { e.currentTarget.style.color = "#d1cfcc"; e.currentTarget.style.borderColor = "#6b696640"; }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeIndex !== cards.length - 1) { e.currentTarget.style.color = "#9b9895"; e.currentTarget.style.borderColor = "#4a474540"; }
+                    }}
+                  >
+                    &#8250;
+                  </button>
+                )}
               </div>
 
-              {/* Download button */}
-              <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); downloadCardImage(); }}
-                  disabled={downloading}
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    backgroundColor: downloading ? "#3d3a37" : "#3d3a37",
-                    color: downloading ? "#6b6966" : "#9b9895",
-                    border: "none",
-                    cursor: downloading ? "not-allowed" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transition: "all 0.2s ease",
-                    padding: 0,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!downloading) {
-                      e.currentTarget.style.backgroundColor = "#4a4745";
-                      e.currentTarget.style.color = "#d1cfcc";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!downloading) {
-                      e.currentTarget.style.backgroundColor = "#3d3a37";
-                      e.currentTarget.style.color = "#9b9895";
-                    }
-                  }}
-                  title="Download card as image"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M8 2v8M8 10L5 7M8 10l3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M3 12h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                  </svg>
-                </button>
+              {/* ── Target Rating Card ── */}
+              <div style={{ flexShrink: 0 }}>
+                <div style={{
+                  filter: fictiveStats ? "saturate(0.45) brightness(0.92)" : "saturate(0) brightness(0.5)",
+                  opacity: fictiveStats ? 0.85 : 0.35,
+                  transition: "all 0.4s ease",
+                  border: "2px solid #000",
+                  borderRadius: 14,
+                }}>
+                  <PlayerCard
+                    username={queriedUser}
+                    timeControl={activeCard?.timeControl ?? ""}
+                    chessRating={targetRating ?? 0}
+                    title={profile?.title}
+                    countryCode={profile?.countryCode}
+                    avatarUrl={profile?.avatarUrl}
+                    arenaStats={fictiveStats ?? activeCard?.arenaStats ?? ({} as ArenaStatsData)}
+                    statDiffs={statDiffs}
+                    editableRating
+                    onRatingChange={handleRatingChange}
+                    ratingPlaceholder={String(currentRating + 200)}
+                  />
+                </div>
               </div>
-
-              {/* Right arrow */}
-              {cards.length > 1 && (
-                <button
-                  onClick={() => setActiveIndex((i) => Math.min(cards.length - 1, i + 1))}
-                  disabled={activeIndex === cards.length - 1}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    backgroundColor: activeIndex === cards.length - 1 ? "#3d3a37" : "#4a4745",
-                    color: activeIndex === cards.length - 1 ? "#6b6966" : "#d1cfcc",
-                    border: "none",
-                    cursor: activeIndex === cards.length - 1 ? "default" : "pointer",
-                    fontSize: 20,
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transition: "all 0.2s ease",
-                    flexShrink: 0,
-                    marginLeft: (cards.length - 1 - activeIndex) * 30,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (activeIndex !== cards.length - 1) e.currentTarget.style.backgroundColor = "#5a5755";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (activeIndex !== cards.length - 1) e.currentTarget.style.backgroundColor = "#4a4745";
-                  }}
-                >
-                  &#8250;
-                </button>
-              )}
             </div>
+
+            {/* Download button — centered below cards */}
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); downloadCardImage(); }}
+                disabled={downloading}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 8,
+                  backgroundColor: "transparent",
+                  color: downloading ? "#4a4745" : "#6b6966",
+                  border: "none",
+                  cursor: downloading ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.2s ease",
+                  padding: 0,
+                }}
+                onMouseEnter={(e) => {
+                  if (!downloading) e.currentTarget.style.color = "#9b9895";
+                }}
+                onMouseLeave={(e) => {
+                  if (!downloading) e.currentTarget.style.color = "#6b6966";
+                }}
+                title="Download card as image"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 2v8M8 10L5 7M8 10l3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M3 12h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+
           </div>
-        )}
+          );
+        })()}
 
         {/* Report Stats */}
         {stats && !loading && (
@@ -688,6 +815,7 @@ export default function Home() {
               const phaseBestMove = cards[activeIndex]?.arenaStats?.phaseBestMoveRate;
               const phaseByResult = cards[activeIndex]?.arenaStats?.phaseAccuracyByResult;
               const phaseBlunder = cards[activeIndex]?.arenaStats?.phaseBlunderRate;
+              const hasTarget = targetStats != null;
               const PHASE_CATEGORIES = [
                 { abbr: "OPN", label: "Opening", color: "#a37acc", accKey: "opening" as const },
                 { abbr: "MID", label: "Middlegame", color: "#c46d8e", accKey: "middlegame" as const },
@@ -695,16 +823,11 @@ export default function Home() {
               ];
               const PHASE_METRICS = [
                 "Accuracy",
-                "Accuracy vs Expected",
                 "Best Move Rate",
                 "Blunder Rate",
                 "Accuracy in Wins",
                 "Accuracy in Draws",
                 "Accuracy in Losses",
-                "Avg CP Loss",
-                "Mistake Rate",
-                "Critical Moment Accuracy",
-                "Consistency",
               ];
               const SKILL_CATEGORIES = [
                 { abbr: "ATK", label: "Attacking", color: "#e05252",
@@ -716,42 +839,71 @@ export default function Home() {
                 { abbr: "STR", label: "Strategy", color: "#81b64c",
                   metrics: ["Success Rate", "CP Loss Distribution"] },
               ];
-              const renderPhasePanel = (cat: typeof PHASE_CATEGORIES[number], metrics: string[]) => {
+
+              // Get the "Your Score" value for a metric
+              const getYourValue = (cat: typeof PHASE_CATEGORIES[number], metric: string): { text: string; color: string } => {
                 const accVal = phaseAccuracy?.[cat.accKey];
                 const vsExpected = phaseAccVsExpected?.[cat.accKey];
-                const getMetricValue = (metric: string): { text: string; color: string } => {
-                  if (metric === "Accuracy" && accVal != null) {
-                    return { text: `${accVal.toFixed(1)}%`, color: "#fff" };
+                if (metric === "Accuracy" && accVal != null) {
+                  return { text: `${accVal.toFixed(1)}%`, color: "#fff" };
+                }
+                if (metric === "Best Move Rate") {
+                  const bmr = phaseBestMove?.[cat.accKey];
+                  if (bmr != null) return { text: `${bmr.toFixed(1)}%`, color: "#fff" };
+                }
+                if (metric === "Blunder Rate") {
+                  const br = phaseBlunder?.[cat.accKey];
+                  if (br != null) return { text: `${br.toFixed(1)}%`, color: br > 3 ? "#e05252" : br > 1.5 ? "#c27a30" : "#81b64c" };
+                }
+                if (metric === "Accuracy in Wins") {
+                  const val = phaseByResult?.[cat.accKey]?.wins;
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: "#81b64c" };
+                }
+                if (metric === "Accuracy in Draws") {
+                  const val = phaseByResult?.[cat.accKey]?.draws;
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: "#c27a30" };
+                }
+                if (metric === "Accuracy in Losses") {
+                  const val = phaseByResult?.[cat.accKey]?.losses;
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: "#e05252" };
+                }
+                return { text: "\u2014", color: "#4a4745" };
+              };
+
+              // Get the "Rating Range" expected value — derived from actual - vsExpected delta
+              const getRangeValue = (cat: typeof PHASE_CATEGORIES[number], metric: string): { text: string; color: string } => {
+                if (metric === "Accuracy") {
+                  const accVal = phaseAccuracy?.[cat.accKey];
+                  const vsExpected = phaseAccVsExpected?.[cat.accKey];
+                  if (accVal != null && vsExpected != null) {
+                    const expected = +(accVal - vsExpected).toFixed(1);
+                    return { text: `${expected.toFixed(1)}%`, color: "#9b9895" };
                   }
-                  if (metric === "Accuracy vs Expected" && vsExpected != null) {
-                    const sign = vsExpected > 0 ? "+" : "";
-                    const color = vsExpected > 0 ? "#81b64c" : vsExpected < 0 ? "#e05252" : "#9b9895";
-                    return { text: `${sign}${vsExpected.toFixed(1)}%`, color };
-                  }
-                  if (metric === "Best Move Rate") {
-                    const bmr = phaseBestMove?.[cat.accKey];
-                    if (bmr != null) return { text: `${bmr.toFixed(1)}%`, color: "#fff" };
-                  }
-                  if (metric === "Blunder Rate") {
-                    const br = phaseBlunder?.[cat.accKey];
-                    if (br != null) return { text: `${br.toFixed(1)}%`, color: br > 3 ? "#e05252" : br > 1.5 ? "#c27a30" : "#81b64c" };
-                  }
-                  if (metric === "Accuracy in Wins") {
-                    const val = phaseByResult?.[cat.accKey]?.wins;
-                    if (val != null) return { text: `${val.toFixed(1)}%`, color: "#81b64c" };
-                  }
-                  if (metric === "Accuracy in Draws") {
-                    const val = phaseByResult?.[cat.accKey]?.draws;
-                    if (val != null) return { text: `${val.toFixed(1)}%`, color: "#c27a30" };
-                  }
-                  if (metric === "Accuracy in Losses") {
-                    const val = phaseByResult?.[cat.accKey]?.losses;
-                    if (val != null) return { text: `${val.toFixed(1)}%`, color: "#e05252" };
-                  }
-                  return { text: "\u2014", color: "#4a4745" };
-                };
+                }
+                // Only accuracy has rating-range data for now
+                return { text: "\u2014", color: "#4a4745" };
+              };
+
+              // Get the "Target Rating" expected value
+              const getTargetValue = (cat: typeof PHASE_CATEGORIES[number], metric: string): { text: string; color: string } => {
+                if (!targetStats) return { text: "\u2014", color: "#4a4745" };
+                if (metric === "Accuracy") {
+                  const val = targetStats.expectedPhaseAccuracy[cat.accKey];
+                  return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
+                }
+                // Only accuracy has target data for now
+                return { text: "\u2014", color: "#4a4745" };
+              };
+
+              const renderPhasePanel = (cat: typeof PHASE_CATEGORIES[number], metrics: string[]) => {
+                const accVal = phaseAccuracy?.[cat.accKey];
+                const colCount = hasTarget ? 4 : 3;
+                const gridCols = hasTarget
+                  ? "1fr 62px 62px 62px"
+                  : "1fr 62px 62px";
                 return (
                   <div key={cat.abbr} style={{ backgroundColor: "#262421", borderRadius: 12, padding: 20 }}>
+                    {/* Panel header */}
                     <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
                       <span style={{
                         backgroundColor: cat.color,
@@ -768,21 +920,45 @@ export default function Home() {
                         {accVal != null ? `${accVal.toFixed(1)}%` : "\u2014"}
                       </span>
                     </div>
-                    <div style={{ height: 1, backgroundColor: "#3a3733", marginBottom: 10 }} />
+                    <div style={{ height: 1, backgroundColor: "#3a3733", marginBottom: 6 }} />
+
+                    {/* Column headers */}
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: gridCols,
+                      gap: 4,
+                      paddingBottom: 6,
+                      marginBottom: 2,
+                      borderBottom: "1px solid #3a3733",
+                    }}>
+                      <span />
+                      <span style={{ fontSize: 9, fontWeight: 700, color: "#6b6966", textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "center" }}>You</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: "#6b6966", textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "center" }}>Peers</span>
+                      {hasTarget && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: "#6b6966", textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "center" }}>Target</span>
+                      )}
+                    </div>
+
+                    {/* Metric rows */}
                     {metrics.map((metric, i) => {
-                      const { text, color } = getMetricValue(metric);
+                      const yours = getYourValue(cat, metric);
+                      const range = getRangeValue(cat, metric);
+                      const target = getTargetValue(cat, metric);
                       return (
                         <div key={metric} style={{
-                          display: "flex",
-                          justifyContent: "space-between",
+                          display: "grid",
+                          gridTemplateColumns: gridCols,
+                          gap: 4,
                           alignItems: "center",
                           padding: "7px 0",
                           borderBottom: i < metrics.length - 1 ? "1px solid #3a3733" : "none",
                         }}>
                           <span style={{ color: "#9b9895", fontSize: 13 }}>{metric}</span>
-                          <span style={{ color, fontSize: 13, fontWeight: 700 }}>
-                            {text}
-                          </span>
+                          <span style={{ color: yours.color, fontSize: 13, fontWeight: 700, textAlign: "center" }}>{yours.text}</span>
+                          <span style={{ color: range.color, fontSize: 13, fontWeight: 700, textAlign: "center" }}>{range.text}</span>
+                          {hasTarget && (
+                            <span style={{ color: target.color, fontSize: 13, fontWeight: 700, textAlign: "center" }}>{target.text}</span>
+                          )}
                         </div>
                       );
                     })}

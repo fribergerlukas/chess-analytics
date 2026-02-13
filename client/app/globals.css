@@ -31,3 +31,14 @@ body {
 [data-next-badge-root] {
   display: none !important;
 }
+
+/* Always show number input spinner arrows */
+input.rating-spinner::-webkit-inner-spin-button,
+input.rating-spinner::-webkit-outer-spin-button {
+  -webkit-appearance: inner-spin-button !important;
+  opacity: 1 !important;
+  display: block !important;
+  cursor: pointer;
+  height: 100%;
+  position: relative;
+}
