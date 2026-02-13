@@ -966,7 +966,7 @@ export default function Home() {
                         fontSize: 10, fontWeight: 800, padding: "3px 10px",
                         borderRadius: 999, textTransform: "uppercase", letterSpacing: "0.06em",
                       }}>
-                        Best Value
+                        Recommended
                       </div>
                       <p className="font-extrabold" style={{ fontSize: 12, color: "#81b64c", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
                         Premium
