@@ -686,6 +686,8 @@ export default function Home() {
               const phaseAccuracy = cards[activeIndex]?.arenaStats?.phaseAccuracy;
               const phaseAccVsExpected = cards[activeIndex]?.arenaStats?.phaseAccuracyVsExpected;
               const phaseBestMove = cards[activeIndex]?.arenaStats?.phaseBestMoveRate;
+              const phaseByResult = cards[activeIndex]?.arenaStats?.phaseAccuracyByResult;
+              const phaseBlunder = cards[activeIndex]?.arenaStats?.phaseBlunderRate;
               const PHASE_CATEGORIES = [
                 { abbr: "OPN", label: "Opening", color: "#a37acc", accKey: "opening" as const },
                 { abbr: "MID", label: "Middlegame", color: "#c46d8e", accKey: "middlegame" as const },
@@ -696,8 +698,13 @@ export default function Home() {
                 "Accuracy vs Expected",
                 "Best Move Rate",
                 "Blunder Rate",
-                "Avg Time per Move",
-                "Time vs Opponent",
+                "Accuracy in Wins",
+                "Accuracy in Draws",
+                "Accuracy in Losses",
+                "Avg CP Loss",
+                "Mistake Rate",
+                "Critical Moment Accuracy",
+                "Consistency",
               ];
               const SKILL_CATEGORIES = [
                 { abbr: "ATK", label: "Attacking", color: "#e05252",
@@ -724,6 +731,22 @@ export default function Home() {
                   if (metric === "Best Move Rate") {
                     const bmr = phaseBestMove?.[cat.accKey];
                     if (bmr != null) return { text: `${bmr.toFixed(1)}%`, color: "#fff" };
+                  }
+                  if (metric === "Blunder Rate") {
+                    const br = phaseBlunder?.[cat.accKey];
+                    if (br != null) return { text: `${br.toFixed(1)}%`, color: br > 3 ? "#e05252" : br > 1.5 ? "#c27a30" : "#81b64c" };
+                  }
+                  if (metric === "Accuracy in Wins") {
+                    const val = phaseByResult?.[cat.accKey]?.wins;
+                    if (val != null) return { text: `${val.toFixed(1)}%`, color: "#81b64c" };
+                  }
+                  if (metric === "Accuracy in Draws") {
+                    const val = phaseByResult?.[cat.accKey]?.draws;
+                    if (val != null) return { text: `${val.toFixed(1)}%`, color: "#c27a30" };
+                  }
+                  if (metric === "Accuracy in Losses") {
+                    const val = phaseByResult?.[cat.accKey]?.losses;
+                    if (val != null) return { text: `${val.toFixed(1)}%`, color: "#e05252" };
                   }
                   return { text: "\u2014", color: "#4a4745" };
                 };

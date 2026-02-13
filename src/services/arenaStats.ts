@@ -48,6 +48,16 @@ export interface ArenaStatsResponse {
     middlegame: number | null;
     endgame: number | null;
   };
+  phaseAccuracyByResult: {
+    opening: { wins: number | null; draws: number | null; losses: number | null };
+    middlegame: { wins: number | null; draws: number | null; losses: number | null };
+    endgame: { wins: number | null; draws: number | null; losses: number | null };
+  };
+  phaseBlunderRate: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
   gamesAnalyzed: number;
   record?: { wins: number; draws: number; losses: number };
 }
@@ -578,6 +588,28 @@ export function computeArenaStats(
     opening: 0, middlegame: 0, endgame: 0,
   };
 
+  // Game result lookup (built early so phase loop can use it)
+  const gameResults: Record<number, string> = {};
+  for (const g of games) {
+    gameResults[g.id] = g.result;
+  }
+
+  // Blunder rate per phase
+  const phaseBlunders: Record<"opening" | "middlegame" | "endgame", number> = {
+    opening: 0, middlegame: 0, endgame: 0,
+  };
+  const phaseMoveCount: Record<"opening" | "middlegame" | "endgame", number> = {
+    opening: 0, middlegame: 0, endgame: 0,
+  };
+
+  // Per-phase accuracy bucketed by game result
+  type ResultKey = "wins" | "draws" | "losses";
+  const phaseAccByResult: Record<"opening" | "middlegame" | "endgame", Record<ResultKey, number[]>> = {
+    opening: { wins: [], draws: [], losses: [] },
+    middlegame: { wins: [], draws: [], losses: [] },
+    endgame: { wins: [], draws: [], losses: [] },
+  };
+
   // Defending-specific counters
   let broadMissedSaves = 0;       // losing (eval <= -150) AND cpLoss >= 100
   let losingTotal = 0;            // all positions where eval <= -150
@@ -728,12 +760,23 @@ export function computeArenaStats(
         phaseBestMoveTotal[phase]++;
         if (curr.moveUci === curr.bestMoveUci) phaseBestMoveHits[phase]++;
       }
+
+      // Blunder tracking
+      phaseMoveCount[phase]++;
+      if (curr.classification === "BLUNDER") phaseBlunders[phase]++;
     }
 
     // Harmonic mean per phase for this game (lichess method)
+    const resultKey: ResultKey | null =
+      gameResults[gameId] === "WIN" ? "wins" :
+      gameResults[gameId] === "LOSS" ? "losses" :
+      gameResults[gameId] === "DRAW" ? "draws" : null;
+
     for (const phase of ["opening", "middlegame", "endgame"] as const) {
       if (phaseAccs[phase].length > 0) {
-        phaseGameAccuracies[phase].push(harmonicMean(phaseAccs[phase]));
+        const hm = harmonicMean(phaseAccs[phase]);
+        phaseGameAccuracies[phase].push(hm);
+        if (resultKey) phaseAccByResult[phase][resultKey].push(hm);
       }
     }
   }
@@ -912,12 +955,6 @@ export function computeArenaStats(
   categoryData["opening"].successRate = openingScore;
 
   // ── Endgame score (composite of 3 metrics) ──
-  // Track per-game endgame results for conversion and save rates
-  const gameResults: Record<number, string> = {};
-  for (const g of games) {
-    gameResults[g.id] = g.result;
-  }
-
   // Count games with winning/losing endgame positions and their outcomes
   const gamesWithWinningEndgame = new Set<number>();
   const gamesWithLosingEndgame = new Set<number>();
@@ -1136,6 +1173,28 @@ export function computeArenaStats(
         : null,
       endgame: phaseBestMoveTotal.endgame > 0
         ? round1((phaseBestMoveHits.endgame / phaseBestMoveTotal.endgame) * 100)
+        : null,
+    },
+    phaseAccuracyByResult: (() => {
+      const MIN_GAMES = 3;
+      const avg = (arr: number[]) => arr.length >= MIN_GAMES
+        ? round1(arr.reduce((a, b) => a + b, 0) / arr.length)
+        : null;
+      return {
+        opening: { wins: avg(phaseAccByResult.opening.wins), draws: avg(phaseAccByResult.opening.draws), losses: avg(phaseAccByResult.opening.losses) },
+        middlegame: { wins: avg(phaseAccByResult.middlegame.wins), draws: avg(phaseAccByResult.middlegame.draws), losses: avg(phaseAccByResult.middlegame.losses) },
+        endgame: { wins: avg(phaseAccByResult.endgame.wins), draws: avg(phaseAccByResult.endgame.draws), losses: avg(phaseAccByResult.endgame.losses) },
+      };
+    })(),
+    phaseBlunderRate: {
+      opening: phaseMoveCount.opening > 0
+        ? round1((phaseBlunders.opening / phaseMoveCount.opening) * 100)
+        : null,
+      middlegame: phaseMoveCount.middlegame > 0
+        ? round1((phaseBlunders.middlegame / phaseMoveCount.middlegame) * 100)
+        : null,
+      endgame: phaseMoveCount.endgame > 0
+        ? round1((phaseBlunders.endgame / phaseMoveCount.endgame) * 100)
         : null,
     },
     gamesAnalyzed: games.length,

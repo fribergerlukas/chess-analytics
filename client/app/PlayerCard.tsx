@@ -46,6 +46,16 @@ export interface ArenaStatsData {
     middlegame: number | null;
     endgame: number | null;
   };
+  phaseAccuracyByResult?: {
+    opening: { wins: number | null; draws: number | null; losses: number | null };
+    middlegame: { wins: number | null; draws: number | null; losses: number | null };
+    endgame: { wins: number | null; draws: number | null; losses: number | null };
+  };
+  phaseBlunderRate?: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
   gamesAnalyzed: number;
   record?: { wins: number; draws: number; losses: number };
 }
