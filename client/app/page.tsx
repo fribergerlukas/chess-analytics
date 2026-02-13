@@ -265,17 +265,32 @@ export default function Home() {
       statsParams.set("limit", String(gameLimit));
       if (gameRatedFilter !== "all") statsParams.set("rated", gameRatedFilter);
 
-      const [statsRes, gamesRes] = await Promise.all([
+      // Build arena-stats params (needs chessRating from active card)
+      const activeCard = cards[activeIndex];
+      const arenaParams = new URLSearchParams();
+      arenaParams.set("timeCategory", gameTimeCategory);
+      arenaParams.set("chessRating", String(activeCard?.chessRating ?? 1500));
+      arenaParams.set("limit", String(gameLimit));
+      if (profile?.title) arenaParams.set("title", profile.title);
+      if (gameRatedFilter !== "all") arenaParams.set("rated", gameRatedFilter);
+
+      const [statsRes, gamesRes, arenaRes] = await Promise.all([
         fetch(`${API_BASE}/users/${encodeURIComponent(queriedUser)}/stats?${statsParams}`),
         fetch(`${API_BASE}/users/${encodeURIComponent(queriedUser)}/games?${new URLSearchParams({
           limit: String(gameLimit),
           timeCategory: gameTimeCategory,
           ...(gameRatedFilter !== "all" ? { rated: gameRatedFilter } : {}),
         })}`),
+        fetch(`${API_BASE}/users/${encodeURIComponent(queriedUser)}/arena-stats?${arenaParams}`),
       ]);
 
       if (statsRes.ok) setStats(await statsRes.json());
       if (gamesRes.ok) { const d = await gamesRes.json(); setGames(d.games); }
+      if (arenaRes.ok && activeCard) {
+        const arenaStats: ArenaStatsData = await arenaRes.json();
+        if (activeCard.arenaStats.record) arenaStats.record = activeCard.arenaStats.record;
+        setCards((prev) => prev.map((c, i) => i === activeIndex ? { ...c, arenaStats } : c));
+      }
     } catch {
       // Non-critical
     } finally {
@@ -670,6 +685,7 @@ export default function Home() {
             {(() => {
               const phaseAccuracy = cards[activeIndex]?.arenaStats?.phaseAccuracy;
               const phaseAccVsExpected = cards[activeIndex]?.arenaStats?.phaseAccuracyVsExpected;
+              const phaseBestMove = cards[activeIndex]?.arenaStats?.phaseBestMoveRate;
               const PHASE_CATEGORIES = [
                 { abbr: "OPN", label: "Opening", color: "#a37acc", accKey: "opening" as const },
                 { abbr: "MID", label: "Middlegame", color: "#c46d8e", accKey: "middlegame" as const },
@@ -704,6 +720,10 @@ export default function Home() {
                     const sign = vsExpected > 0 ? "+" : "";
                     const color = vsExpected > 0 ? "#81b64c" : vsExpected < 0 ? "#e05252" : "#9b9895";
                     return { text: `${sign}${vsExpected.toFixed(1)}%`, color };
+                  }
+                  if (metric === "Best Move Rate") {
+                    const bmr = phaseBestMove?.[cat.accKey];
+                    if (bmr != null) return { text: `${bmr.toFixed(1)}%`, color: "#fff" };
                   }
                   return { text: "\u2014", color: "#4a4745" };
                 };

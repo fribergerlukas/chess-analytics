@@ -20,7 +20,7 @@ router.get(
       const username = typeof req.params.username === "string"
         ? req.params.username
         : String(req.params.username);
-      const { timeCategory, chessRating, title, rated } = req.query;
+      const { timeCategory, chessRating, title, rated, limit } = req.query;
 
       if (!timeCategory || typeof timeCategory !== "string") {
         res.status(400).json({ error: "timeCategory query param is required" });
@@ -58,7 +58,8 @@ router.get(
         .map((g) => g.timeControl)
         .filter((tc) => matchesCategory(tc, timeCategory.toLowerCase()));
 
-      // Fetch last 40 games for this time category
+      // Fetch games for this time category (default 40, max 100)
+      const gameLimit = Math.min(Math.max(Number(limit) || 40, 1), 100);
       const games = await prisma.game.findMany({
         where: {
           ...gameWhere,
@@ -73,7 +74,7 @@ router.get(
           pgn: true,
         },
         orderBy: { endDate: "desc" },
-        take: 40,
+        take: gameLimit,
       });
 
       if (games.length === 0) {

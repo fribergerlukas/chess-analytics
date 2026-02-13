@@ -43,6 +43,11 @@ export interface ArenaStatsResponse {
     middlegame: number | null;
     endgame: number | null;
   };
+  phaseBestMoveRate: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
   gamesAnalyzed: number;
   record?: { wins: number; draws: number; losses: number };
 }
@@ -565,6 +570,14 @@ export function computeArenaStats(
     endgame: [],
   };
 
+  // Best move rate per phase (across all games, not per-game)
+  const phaseBestMoveHits: Record<"opening" | "middlegame" | "endgame", number> = {
+    opening: 0, middlegame: 0, endgame: 0,
+  };
+  const phaseBestMoveTotal: Record<"opening" | "middlegame" | "endgame", number> = {
+    opening: 0, middlegame: 0, endgame: 0,
+  };
+
   // Defending-specific counters
   let broadMissedSaves = 0;       // losing (eval <= -150) AND cpLoss >= 100
   let losingTotal = 0;            // all positions where eval <= -150
@@ -706,10 +719,15 @@ export function computeArenaStats(
 
       const isOpening = curr.ply <= 24;
       const isEndgame = !isOpening && isEndgamePosition(curr.fen);
+      const phase: "opening" | "middlegame" | "endgame" = isOpening ? "opening" : isEndgame ? "endgame" : "middlegame";
 
-      if (isOpening) phaseAccs.opening.push(acc);
-      else if (isEndgame) phaseAccs.endgame.push(acc);
-      else phaseAccs.middlegame.push(acc);
+      phaseAccs[phase].push(acc);
+
+      // Best move tracking
+      if (curr.bestMoveUci) {
+        phaseBestMoveTotal[phase]++;
+        if (curr.moveUci === curr.bestMoveUci) phaseBestMoveHits[phase]++;
+      }
     }
 
     // Harmonic mean per phase for this game (lichess method)
@@ -1107,6 +1125,17 @@ export function computeArenaStats(
             phaseGameAccuracies.endgame.reduce((a, b) => a + b, 0) / phaseGameAccuracies.endgame.length
             - interpolateCurve(EXPECTED_ENDGAME_PHASE_ACCURACY_CURVE, chessRating)
           )
+        : null,
+    },
+    phaseBestMoveRate: {
+      opening: phaseBestMoveTotal.opening > 0
+        ? round1((phaseBestMoveHits.opening / phaseBestMoveTotal.opening) * 100)
+        : null,
+      middlegame: phaseBestMoveTotal.middlegame > 0
+        ? round1((phaseBestMoveHits.middlegame / phaseBestMoveTotal.middlegame) * 100)
+        : null,
+      endgame: phaseBestMoveTotal.endgame > 0
+        ? round1((phaseBestMoveHits.endgame / phaseBestMoveTotal.endgame) * 100)
         : null,
     },
     gamesAnalyzed: games.length,

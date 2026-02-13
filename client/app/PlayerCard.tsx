@@ -41,6 +41,11 @@ export interface ArenaStatsData {
     middlegame: number | null;
     endgame: number | null;
   };
+  phaseBestMoveRate?: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
   gamesAnalyzed: number;
   record?: { wins: number; draws: number; losses: number };
 }
