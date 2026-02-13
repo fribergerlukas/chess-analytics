@@ -262,5 +262,2533 @@
     "opening": 96.90197509126024,
     "middlegame": 87.45771581485438,
     "endgame": 90.621285785213
+  },
+  {
+    "username": "magnuscarlsen",
+    "rating": 3330,
+    "bracket": "2800+",
+    "opening": 96.38779803261173,
+    "middlegame": 91.4441702962939,
+    "endgame": 89.65262874958826
+  },
+  {
+    "username": "chesswithakeem",
+    "rating": 2547,
+    "bracket": "2400-2600",
+    "opening": 94.25288064422874,
+    "middlegame": 84.40872707667883,
+    "endgame": 83.14052028619568
+  },
+  {
+    "username": "grandmother",
+    "rating": 1148,
+    "bracket": "1000-1200",
+    "opening": 84.64564279245009,
+    "middlegame": 82.39652553248906,
+    "endgame": 83.77307702632115
+  },
+  {
+    "username": "fabianocaruana",
+    "rating": 3156,
+    "bracket": "2800+",
+    "opening": 94.45641781984877,
+    "middlegame": 88.66340896055637,
+    "endgame": 88.4309111437975
+  },
+  {
+    "username": "grandmother89",
+    "rating": 546,
+    "bracket": "0-800",
+    "opening": 78.75683254022087,
+    "middlegame": 78.87325617803279,
+    "endgame": 88.10532490563425
+  },
+  {
+    "username": "jensrasmusson",
+    "rating": 1328,
+    "bracket": "1200-1400",
+    "opening": 85.72055624155793,
+    "middlegame": 74.02603654364275,
+    "endgame": 79.18194828812953
+  },
+  {
+    "username": "robbertpolgar",
+    "rating": 2585,
+    "bracket": "2400-2600",
+    "opening": 93.02449301323914,
+    "middlegame": 83.55255808762692,
+    "endgame": 82.18022083002332
+  },
+  {
+    "username": "polish_knight3000",
+    "rating": 2324,
+    "bracket": "2200-2400",
+    "opening": 91.26827944578814,
+    "middlegame": 82.02980605034466,
+    "endgame": 84.5433341257443
+  },
+  {
+    "username": "hikaru",
+    "rating": 3319,
+    "bracket": "2800+",
+    "opening": 96.33977549969013,
+    "middlegame": 91.83382578328872,
+    "endgame": 89.64326121198559
+  },
+  {
+    "username": "grandmother69",
+    "rating": 1369,
+    "bracket": "1200-1400",
+    "opening": 88.48292663438637,
+    "middlegame": 77.61921322257271,
+    "endgame": 82.82130998306867
+  },
+  {
+    "username": "akerlie",
+    "rating": 685,
+    "bracket": "0-800",
+    "opening": 65.7964853391879,
+    "middlegame": 64.5321644485986,
+    "endgame": 80.6569110564953
+  },
+  {
+    "username": "jollibomba",
+    "rating": 653,
+    "bracket": "0-800",
+    "opening": 83.73009185376591,
+    "middlegame": 65.9136299340304,
+    "endgame": 76.83263580176177
+  },
+  {
+    "username": "utopiasolla",
+    "rating": 399,
+    "bracket": "0-800",
+    "opening": 65.99328285731167,
+    "middlegame": 90.13856462625294,
+    "endgame": 98.65974356283873
+  },
+  {
+    "username": "schramy1234",
+    "rating": 432,
+    "bracket": "0-800",
+    "opening": 71.3188486804689,
+    "middlegame": 54.250943184753886,
+    "endgame": 83.97464887926316
+  },
+  {
+    "username": "halli-i",
+    "rating": 152,
+    "bracket": "0-800",
+    "opening": 74.58016487741237,
+    "middlegame": 84.61576290476516,
+    "endgame": 94.51170611815402
+  },
+  {
+    "username": "krummikloki",
+    "rating": 413,
+    "bracket": "0-800",
+    "opening": 74.65614862231043,
+    "middlegame": 59.57741428530807,
+    "endgame": 68.84643786023989
+  },
+  {
+    "username": "doctorfargo",
+    "rating": 982,
+    "bracket": "800-1000",
+    "opening": 89.35103290840678,
+    "middlegame": 69.70495890941037,
+    "endgame": 76.95672830203416
+  },
+  {
+    "username": "jonhreggvidsson",
+    "rating": 998,
+    "bracket": "800-1000",
+    "opening": 83.12843823278523,
+    "middlegame": 39.78679822697796,
+    "endgame": 94.67818284851721
+  },
+  {
+    "username": "benninaer",
+    "rating": 873,
+    "bracket": "800-1000",
+    "opening": 74.06815039340034,
+    "middlegame": 63.59620939168038,
+    "endgame": 81.49170801534113
+  },
+  {
+    "username": "cheesychessfingers",
+    "rating": 884,
+    "bracket": "800-1000",
+    "opening": 81.09901569918279,
+    "middlegame": 67.49002995410375,
+    "endgame": 67.13338040093743
+  },
+  {
+    "username": "kollibloma",
+    "rating": 845,
+    "bracket": "800-1000",
+    "opening": 81.1444582401817,
+    "middlegame": 78.5048686646002,
+    "endgame": 84.41684552096935
+  },
+  {
+    "username": "punktur0",
+    "rating": 912,
+    "bracket": "800-1000",
+    "opening": 81.36654727841304,
+    "middlegame": 71.92017138693728,
+    "endgame": 69.80254879387257
+  },
+  {
+    "username": "21gt",
+    "rating": 884,
+    "bracket": "800-1000",
+    "opening": 80.22111286831625,
+    "middlegame": 66.48161005245008,
+    "endgame": 80.78913060056581
+  },
+  {
+    "username": "x37a",
+    "rating": 1109,
+    "bracket": "1000-1200",
+    "opening": 76.01329518999859,
+    "middlegame": 70.24402302065101,
+    "endgame": 85.42314294899552
+  },
+  {
+    "username": "binni25",
+    "rating": 1061,
+    "bracket": "1000-1200",
+    "opening": 66.74085568205552,
+    "middlegame": 72.24862876398139,
+    "endgame": 96.88694210237293
+  },
+  {
+    "username": "romualdo6969",
+    "rating": 1060,
+    "bracket": "1000-1200",
+    "opening": 76.47231129468355,
+    "middlegame": 65.30022497644791,
+    "endgame": 84.61531777004362
+  },
+  {
+    "username": "thepantherhunter",
+    "rating": 1190,
+    "bracket": "1000-1200",
+    "opening": 81.94378482225349,
+    "middlegame": 83.17907950902246,
+    "endgame": 81.4378848338168
+  },
+  {
+    "username": "hddqb",
+    "rating": 1000,
+    "bracket": "1000-1200",
+    "opening": 83.70793817453799,
+    "middlegame": 70.96702372359516,
+    "endgame": 72.18417733337786
+  },
+  {
+    "username": "jurincics",
+    "rating": 1031,
+    "bracket": "1000-1200",
+    "opening": 79.46593951002278,
+    "middlegame": 69.91951621974302,
+    "endgame": 79.00520374359415
+  },
+  {
+    "username": "massadur",
+    "rating": 1349,
+    "bracket": "1200-1400",
+    "opening": 87.58715669131837,
+    "middlegame": 70.8679708008816,
+    "endgame": 79.39483869835826
+  },
+  {
+    "username": "icehot96",
+    "rating": 1204,
+    "bracket": "1200-1400",
+    "opening": 86.90501886719406,
+    "middlegame": 81.15252860878209,
+    "endgame": 77.28637843454243
+  },
+  {
+    "username": "specki74",
+    "rating": 1260,
+    "bracket": "1200-1400",
+    "opening": 86.70300652326134,
+    "middlegame": 73.68047404111552,
+    "endgame": 82.10071405463538
+  },
+  {
+    "username": "oneminmonster",
+    "rating": 1317,
+    "bracket": "1200-1400",
+    "opening": 82.39592815766567,
+    "middlegame": 64.36408444333274,
+    "endgame": 72.06451561976813
+  },
+  {
+    "username": "arnargylfi",
+    "rating": 1434,
+    "bracket": "1400-1600",
+    "opening": 85.19758563448931,
+    "middlegame": 77.89681269910511,
+    "endgame": 78.83786284979672
+  },
+  {
+    "username": "jon78900",
+    "rating": 1594,
+    "bracket": "1400-1600",
+    "opening": 88.58679971637244,
+    "middlegame": 72.87385131157808,
+    "endgame": 75.26336391141453
+  },
+  {
+    "username": "szoboisred",
+    "rating": 1529,
+    "bracket": "1400-1600",
+    "opening": 89.15342206301126,
+    "middlegame": 65.93946975390304,
+    "endgame": 100
+  },
+  {
+    "username": "fnjoski",
+    "rating": 1526,
+    "bracket": "1400-1600",
+    "opening": 89.33563083051506,
+    "middlegame": 83.38024173150653,
+    "endgame": 81.5841356164277
+  },
+  {
+    "username": "eskeven",
+    "rating": 1496,
+    "bracket": "1400-1600",
+    "opening": 92.93169310658251,
+    "middlegame": 83.31093715861664,
+    "endgame": 78.40403512373406
+  },
+  {
+    "username": "mathias3",
+    "rating": 1401,
+    "bracket": "1400-1600",
+    "opening": 82.11575819876691,
+    "middlegame": 75.70305038775027,
+    "endgame": 74.52625064013117
+  },
+  {
+    "username": "leurindal",
+    "rating": 1459,
+    "bracket": "1400-1600",
+    "opening": 89.95538167624615,
+    "middlegame": 85.9318424870418,
+    "endgame": 87.21205528416804
+  },
+  {
+    "username": "thuidunn",
+    "rating": 1462,
+    "bracket": "1400-1600",
+    "opening": 93.27028364144905,
+    "middlegame": 85.10734399573248,
+    "endgame": 73.3368059328465
+  },
+  {
+    "username": "bushonica",
+    "rating": 1797,
+    "bracket": "1600-1800",
+    "opening": 91.46141450172202,
+    "middlegame": 79.17675904449894,
+    "endgame": 81.83638342087288
+  },
+  {
+    "username": "chahraa",
+    "rating": 1745,
+    "bracket": "1600-1800",
+    "opening": 86.40444766069295,
+    "middlegame": 73.23509467370636,
+    "endgame": 81.2728421508271
+  },
+  {
+    "username": "highkey8",
+    "rating": 1702,
+    "bracket": "1600-1800",
+    "opening": 89.55756463465595,
+    "middlegame": 79.28349750311202,
+    "endgame": 92.25771838671054
+  },
+  {
+    "username": "lvc7912",
+    "rating": 1642,
+    "bracket": "1600-1800",
+    "opening": 91.81141444322108,
+    "middlegame": 86.1721981717322,
+    "endgame": 88.56268655098017
+  },
+  {
+    "username": "apfernans",
+    "rating": 1666,
+    "bracket": "1600-1800",
+    "opening": 85.4892033941336,
+    "middlegame": 79.42070509997097,
+    "endgame": 85.16889397828727
+  },
+  {
+    "username": "petrakon",
+    "rating": 1722,
+    "bracket": "1600-1800",
+    "opening": 93.8923876865674,
+    "middlegame": 86.58433035909884,
+    "endgame": 71.00761494212996
+  },
+  {
+    "username": "anonima145",
+    "rating": 1700,
+    "bracket": "1600-1800",
+    "opening": 92.95021911046398,
+    "middlegame": 85.8661611548877,
+    "endgame": 58.06947024579285
+  },
+  {
+    "username": "arinay",
+    "rating": 1831,
+    "bracket": "1800-2000",
+    "opening": 89.50721162410952,
+    "middlegame": 78.2658404746734,
+    "endgame": 82.32929250327796
+  },
+  {
+    "username": "jasminxaa",
+    "rating": 1991,
+    "bracket": "1800-2000",
+    "opening": 90.06687885359754,
+    "middlegame": 73.32358040484495,
+    "endgame": 87.55958309662144
+  },
+  {
+    "username": "qvuong25",
+    "rating": 1930,
+    "bracket": "1800-2000",
+    "opening": 91.58931890244801,
+    "middlegame": 79.8269306213286,
+    "endgame": 86.50691652070063
+  },
+  {
+    "username": "kosmys",
+    "rating": 1805,
+    "bracket": "1800-2000",
+    "opening": 87.15490725840921,
+    "middlegame": 73.06886451546669,
+    "endgame": 83.04887355924522
+  },
+  {
+    "username": "ritatorres",
+    "rating": 1888,
+    "bracket": "1800-2000",
+    "opening": 93.2140091321078,
+    "middlegame": 78.35210832399332,
+    "endgame": 87.93117119336044
+  },
+  {
+    "username": "musiclover288",
+    "rating": 1821,
+    "bracket": "1800-2000",
+    "opening": 88.13403244259692,
+    "middlegame": 79.56551161053477,
+    "endgame": 85.30292000482368
+  },
+  {
+    "username": "mkkuhner",
+    "rating": 1949,
+    "bracket": "1800-2000",
+    "opening": 92.70869047044049,
+    "middlegame": 79.42325349490145,
+    "endgame": 81.93178699239687
+  },
+  {
+    "username": "diaghdsfawde",
+    "rating": 2017,
+    "bracket": "2000-2200",
+    "opening": 88.79241672574129,
+    "middlegame": 80.5881439099184,
+    "endgame": 74.8897284666344
+  },
+  {
+    "username": "nannn9",
+    "rating": 2079,
+    "bracket": "2000-2200",
+    "opening": 92.98244544774087,
+    "middlegame": 79.37494881099538,
+    "endgame": 81.18293605159539
+  },
+  {
+    "username": "wcmelw1",
+    "rating": 2125,
+    "bracket": "2000-2200",
+    "opening": 91.18828744346749,
+    "middlegame": 82.26897235181238,
+    "endgame": 79.39146027471878
+  },
+  {
+    "username": "mistmisty",
+    "rating": 2147,
+    "bracket": "2000-2200",
+    "opening": 90.32538331222614,
+    "middlegame": 78.06779186128492,
+    "endgame": 80.7895167984669
+  },
+  {
+    "username": "lavandum24",
+    "rating": 2164,
+    "bracket": "2000-2200",
+    "opening": 93.43566073043512,
+    "middlegame": 81.41985121116069,
+    "endgame": 86.96284012902389
+  },
+  {
+    "username": "pearlphoenix2005",
+    "rating": 2143,
+    "bracket": "2000-2200",
+    "opening": 93.30246968572064,
+    "middlegame": 85.97326866729217,
+    "endgame": 93.66090679993444
+  },
+  {
+    "username": "nusratalo",
+    "rating": 2138,
+    "bracket": "2000-2200",
+    "opening": 92.08127977298152,
+    "middlegame": 86.78831589901256,
+    "endgame": 71.70873370083932
+  },
+  {
+    "username": "abdodi",
+    "rating": 2338,
+    "bracket": "2200-2400",
+    "opening": 91.7127719191149,
+    "middlegame": 79.98887781177093,
+    "endgame": 89.08054099396193
+  },
+  {
+    "username": "squeakingsquirrel",
+    "rating": 2278,
+    "bracket": "2200-2400",
+    "opening": 93.2177333620303,
+    "middlegame": 88.32506634482532,
+    "endgame": 85.78971672657515
+  },
+  {
+    "username": "xizahk",
+    "rating": 2318,
+    "bracket": "2200-2400",
+    "opening": 92.84384497308716,
+    "middlegame": 85.62560715892674,
+    "endgame": 86.72857881199593
+  },
+  {
+    "username": "diana_omurbekova",
+    "rating": 2242,
+    "bracket": "2200-2400",
+    "opening": 91.84952350749987,
+    "middlegame": 77.2048281597925,
+    "endgame": 80.13475518009572
+  },
+  {
+    "username": "freepawntoyou",
+    "rating": 2353,
+    "bracket": "2200-2400",
+    "opening": 91.13659217242484,
+    "middlegame": 78.03777267830641,
+    "endgame": 87.44235735390811
+  },
+  {
+    "username": "wonderchampion",
+    "rating": 2336,
+    "bracket": "2200-2400",
+    "opening": 93.40662939915964,
+    "middlegame": 84.73936636759774,
+    "endgame": 84.13766687250963
+  },
+  {
+    "username": "thealphalion86",
+    "rating": 2553,
+    "bracket": "2400-2600",
+    "opening": 94.38544584810697,
+    "middlegame": 84.24354284835432,
+    "endgame": 91.30751309168002
+  },
+  {
+    "username": "geminithegreat",
+    "rating": 2415,
+    "bracket": "2400-2600",
+    "opening": 94.3365248246443,
+    "middlegame": 86.50947210627668,
+    "endgame": 84.80289855098023
+  },
+  {
+    "username": "kingslayy7yer",
+    "rating": 2429,
+    "bracket": "2400-2600",
+    "opening": 94.81465611810174,
+    "middlegame": 81.16671017114403,
+    "endgame": 83.3900248387241
+  },
+  {
+    "username": "oykuince",
+    "rating": 2494,
+    "bracket": "2400-2600",
+    "opening": 93.98670687724443,
+    "middlegame": 86.6236356873835,
+    "endgame": 86.88092718098973
+  },
+  {
+    "username": "just-na",
+    "rating": 2707,
+    "bracket": "2600-2800",
+    "opening": 93.8696731460826,
+    "middlegame": 84.84979785283916,
+    "endgame": 90.24789569349942
+  },
+  {
+    "username": "lady_nika",
+    "rating": 2725,
+    "bracket": "2600-2800",
+    "opening": 92.51917278763975,
+    "middlegame": 81.66309014782395,
+    "endgame": 89.30252329601711
+  },
+  {
+    "username": "kuzol",
+    "rating": 2614,
+    "bracket": "2600-2800",
+    "opening": 95.05678353182812,
+    "middlegame": 90.64428563182189,
+    "endgame": 84.32743718693187
+  },
+  {
+    "username": "newchesscorner64",
+    "rating": 2642,
+    "bracket": "2600-2800",
+    "opening": 90.82696864438506,
+    "middlegame": 80.8431866987335,
+    "endgame": 81.07624014801617
+  },
+  {
+    "username": "actuary44",
+    "rating": 2620,
+    "bracket": "2600-2800",
+    "opening": 91.99150963506459,
+    "middlegame": 86.40127849405133,
+    "endgame": 91.15800702501805
+  },
+  {
+    "username": "endgamemaster51",
+    "rating": 2707,
+    "bracket": "2600-2800",
+    "opening": 94.71734339314862,
+    "middlegame": 88.7244781582444,
+    "endgame": 79.3427216288071
+  },
+  {
+    "username": "gm2050pn",
+    "rating": 2730,
+    "bracket": "2600-2800",
+    "opening": 93.7348371798705,
+    "middlegame": 84.60534166343987,
+    "endgame": 88.0883540751692
+  },
+  {
+    "username": "billy_thekid30",
+    "rating": 2866,
+    "bracket": "2800+",
+    "opening": 90.65006624757815,
+    "middlegame": 84.30981001559701,
+    "endgame": 86.06774415256446
+  },
+  {
+    "username": "vovachesss",
+    "rating": 2884,
+    "bracket": "2800+",
+    "opening": 95.4566191896793,
+    "middlegame": 86.96027555611413,
+    "endgame": 90.63391529951875
+  },
+  {
+    "username": "abund",
+    "rating": 2811,
+    "bracket": "2800+",
+    "opening": 96.17562808694758,
+    "middlegame": 89.15239039555648,
+    "endgame": 91.0203534438526
+  },
+  {
+    "username": "hunts234",
+    "rating": 560,
+    "bracket": "0-800",
+    "opening": 78.04939770595524,
+    "middlegame": 70.23955573092485,
+    "endgame": 74.82502697428463
+  },
+  {
+    "username": "zigurgeirii",
+    "rating": 747,
+    "bracket": "0-800",
+    "opening": 71.3267206657885,
+    "middlegame": 88.31880402153587,
+    "endgame": 88.17056350210478
+  },
+  {
+    "username": "guzman144",
+    "rating": 571,
+    "bracket": "0-800",
+    "opening": 72.94634406220824,
+    "middlegame": 76.09382372667473,
+    "endgame": 99.1717943950744
+  },
+  {
+    "username": "leonergeitin",
+    "rating": 598,
+    "bracket": "0-800",
+    "opening": 75.5127945955373,
+    "middlegame": 10.550366795091936,
+    "endgame": null
+  },
+  {
+    "username": "gallagripur2",
+    "rating": 573,
+    "bracket": "0-800",
+    "opening": 80.35123838490337,
+    "middlegame": 76.31918871635959,
+    "endgame": 69.28267098194749
+  },
+  {
+    "username": "stebbifranz",
+    "rating": 774,
+    "bracket": "0-800",
+    "opening": 83.36418250890024,
+    "middlegame": 69.65750567366484,
+    "endgame": 76.69604897800778
+  },
+  {
+    "username": "theoriginalkinny",
+    "rating": 659,
+    "bracket": "0-800",
+    "opening": 70.3656544179119,
+    "middlegame": 66.62659200018622,
+    "endgame": 79.45350849092527
+  },
+  {
+    "username": "eriknoi20",
+    "rating": 735,
+    "bracket": "0-800",
+    "opening": 86.27760767676665,
+    "middlegame": 68.19585262216455,
+    "endgame": 74.91303100100916
+  },
+  {
+    "username": "kristvinjs",
+    "rating": 141,
+    "bracket": "0-800",
+    "opening": 64.98641281078866,
+    "middlegame": 66.30556511139457,
+    "endgame": 74.40473905106793
+  },
+  {
+    "username": "doradull55",
+    "rating": 867,
+    "bracket": "800-1000",
+    "opening": 82.93070514328636,
+    "middlegame": 72.78654403360994,
+    "endgame": 70.7862071845687
+  },
+  {
+    "username": "ymmi",
+    "rating": 927,
+    "bracket": "800-1000",
+    "opening": 82.57530989638512,
+    "middlegame": 76.03382245156978,
+    "endgame": 78.64148177028025
+  },
+  {
+    "username": "antoineluxembourg",
+    "rating": 932,
+    "bracket": "800-1000",
+    "opening": 79.49811353479433,
+    "middlegame": 80.82958628941672,
+    "endgame": 78.90997236570205
+  },
+  {
+    "username": "jimmyglx",
+    "rating": 902,
+    "bracket": "800-1000",
+    "opening": 83.55396714896789,
+    "middlegame": 78.1441526368687,
+    "endgame": 80.22514798437571
+  },
+  {
+    "username": "bacutil",
+    "rating": 826,
+    "bracket": "800-1000",
+    "opening": 76.17136593192701,
+    "middlegame": 75.81371693702923,
+    "endgame": 83.99390986522558
+  },
+  {
+    "username": "matthieudegrave",
+    "rating": 853,
+    "bracket": "800-1000",
+    "opening": 79.73079782555402,
+    "middlegame": 69.66429956271715,
+    "endgame": 66.97639792564367
+  },
+  {
+    "username": "skxnxp",
+    "rating": 911,
+    "bracket": "800-1000",
+    "opening": 69.53306822442663,
+    "middlegame": 81.08675951195352,
+    "endgame": 93.15783387102596
+  },
+  {
+    "username": "mikela14",
+    "rating": 819,
+    "bracket": "800-1000",
+    "opening": 80.7392472657747,
+    "middlegame": 73.60183566580152,
+    "endgame": 89.55876346957407
+  },
+  {
+    "username": "gregory10188",
+    "rating": 804,
+    "bracket": "800-1000",
+    "opening": 74.65606179649407,
+    "middlegame": 68.77879363867574,
+    "endgame": 73.49728782057453
+  },
+  {
+    "username": "isbjorn",
+    "rating": 1061,
+    "bracket": "1000-1200",
+    "opening": 88.19584780307513,
+    "middlegame": 80.59620943988152,
+    "endgame": 67.22744861955613
+  },
+  {
+    "username": "fridrikmar",
+    "rating": 1157,
+    "bracket": "1000-1200",
+    "opening": 86.65792423120664,
+    "middlegame": 77.85435585177638,
+    "endgame": 73.3165204260679
+  },
+  {
+    "username": "garibaldix",
+    "rating": 1139,
+    "bracket": "1000-1200",
+    "opening": 86.33787477810088,
+    "middlegame": 74.03555618355624,
+    "endgame": 81.63021108947848
+  },
+  {
+    "username": "marvinluigi",
+    "rating": 1101,
+    "bracket": "1000-1200",
+    "opening": 85.11478186736402,
+    "middlegame": 74.16010386819323,
+    "endgame": 73.01091034239099
+  },
+  {
+    "username": "avalonnow",
+    "rating": 1113,
+    "bracket": "1000-1200",
+    "opening": 83.50833574486286,
+    "middlegame": 74.53990481088026,
+    "endgame": 81.05326753403408
+  },
+  {
+    "username": "zalkarry",
+    "rating": 1161,
+    "bracket": "1000-1200",
+    "opening": 82.7729668151993,
+    "middlegame": 76.8063455138381,
+    "endgame": 80.0769853890772
+  },
+  {
+    "username": "sulualeoj",
+    "rating": 1091,
+    "bracket": "1000-1200",
+    "opening": 77.78272891703088,
+    "middlegame": 76.02618310560482,
+    "endgame": 83.9090217530139
+  },
+  {
+    "username": "esklao",
+    "rating": 1022,
+    "bracket": "1000-1200",
+    "opening": 85.98409263570157,
+    "middlegame": 78.0570820327933,
+    "endgame": 88.45026568534345
+  },
+  {
+    "username": "mnshr",
+    "rating": 1074,
+    "bracket": "1000-1200",
+    "opening": 85.38686770675575,
+    "middlegame": 74.18540485424164,
+    "endgame": 74.46378442511354
+  },
+  {
+    "username": "luxem92",
+    "rating": 1187,
+    "bracket": "1000-1200",
+    "opening": 89.07201318265803,
+    "middlegame": 75.10591022550727,
+    "endgame": 79.35014132955651
+  },
+  {
+    "username": "myow",
+    "rating": 652,
+    "bracket": "0-800",
+    "opening": 75.61125399467174,
+    "middlegame": 60.34856903148922,
+    "endgame": 79.76149635523888
+  },
+  {
+    "username": "atlisiv3",
+    "rating": 944,
+    "bracket": "800-1000",
+    "opening": 83.35744754027208,
+    "middlegame": 68.9833775556136,
+    "endgame": 76.75672414572479
+  },
+  {
+    "username": "hvinur80",
+    "rating": 1244,
+    "bracket": "1200-1400",
+    "opening": 88.38122985717048,
+    "middlegame": 75.68866788598356,
+    "endgame": 85.89341477636474
+  },
+  {
+    "username": "atliragg",
+    "rating": 1257,
+    "bracket": "1200-1400",
+    "opening": 84.52911654466911,
+    "middlegame": 75.63407275096442,
+    "endgame": 86.28246652426128
+  },
+  {
+    "username": "bone15005",
+    "rating": 1201,
+    "bracket": "1200-1400",
+    "opening": 94.67768681027721,
+    "middlegame": 70.84923601920283,
+    "endgame": 91.38484363106124
+  },
+  {
+    "username": "dizel11",
+    "rating": 1355,
+    "bracket": "1200-1400",
+    "opening": 90.08461759635921,
+    "middlegame": 69.04906116198072,
+    "endgame": 83.73917278934753
+  },
+  {
+    "username": "tariqnawaz77",
+    "rating": 1316,
+    "bracket": "1200-1400",
+    "opening": 85.16630701189513,
+    "middlegame": 78.88756006785579,
+    "endgame": 78.53008867003481
+  },
+  {
+    "username": "xextremexx",
+    "rating": 1362,
+    "bracket": "1200-1400",
+    "opening": 88.58279606642776,
+    "middlegame": 76.73953831579314,
+    "endgame": 73.32903166972417
+  },
+  {
+    "username": "recki2",
+    "rating": 1363,
+    "bracket": "1200-1400",
+    "opening": 85.42608480433844,
+    "middlegame": 74.79864293955046,
+    "endgame": 80.72125683096574
+  },
+  {
+    "username": "marcelorfurtado",
+    "rating": 1309,
+    "bracket": "1200-1400",
+    "opening": 78.6907166283561,
+    "middlegame": 70.32658842124629,
+    "endgame": 66.24101960664703
+  },
+  {
+    "username": "t2ofo4ur",
+    "rating": 1356,
+    "bracket": "1200-1400",
+    "opening": 85.64076582505751,
+    "middlegame": 81.1357320817437,
+    "endgame": 76.23545624476981
+  },
+  {
+    "username": "imarki",
+    "rating": 1309,
+    "bracket": "1200-1400",
+    "opening": 88.3464357196865,
+    "middlegame": 70.49880282249437,
+    "endgame": 74.36151576854486
+  },
+  {
+    "username": "notagoodplayer1232445",
+    "rating": 1316,
+    "bracket": "1200-1400",
+    "opening": 88.13143769508856,
+    "middlegame": 75.95561840332982,
+    "endgame": 80.64567602963238
+  },
+  {
+    "username": "andrith",
+    "rating": 1293,
+    "bracket": "1200-1400",
+    "opening": 83.61099737638314,
+    "middlegame": 65.38335043620444,
+    "endgame": 80.87622918021711
+  },
+  {
+    "username": "ajul66",
+    "rating": 1220,
+    "bracket": "1200-1400",
+    "opening": 88.15381208821671,
+    "middlegame": 74.44783806670063,
+    "endgame": 65.24611018526895
+  },
+  {
+    "username": "tjorvi",
+    "rating": 1275,
+    "bracket": "1200-1400",
+    "opening": 83.8930908110748,
+    "middlegame": 72.96589114947375,
+    "endgame": 85.2090163998061
+  },
+  {
+    "username": "ghsmile",
+    "rating": 1256,
+    "bracket": "1200-1400",
+    "opening": 78.86128934755799,
+    "middlegame": 70.87750264323954,
+    "endgame": 69.11153506832544
+  },
+  {
+    "username": "jensth2",
+    "rating": 1263,
+    "bracket": "1200-1400",
+    "opening": 87.43680281381643,
+    "middlegame": 75.11013249927693,
+    "endgame": 70.98902358531485
+  },
+  {
+    "username": "ansisleipur",
+    "rating": 1354,
+    "bracket": "1200-1400",
+    "opening": 81.92291448692825,
+    "middlegame": 80.16245411701763,
+    "endgame": 87.93352835600514
+  },
+  {
+    "username": "joeliser",
+    "rating": 1264,
+    "bracket": "1200-1400",
+    "opening": 84.4079340218983,
+    "middlegame": 68.54321931824128,
+    "endgame": 73.28934498012794
+  },
+  {
+    "username": "cketelbar",
+    "rating": 1337,
+    "bracket": "1200-1400",
+    "opening": 83.87412344528187,
+    "middlegame": 72.98410176515152,
+    "endgame": 83.6211105934368
+  },
+  {
+    "username": "borastefanovic1",
+    "rating": 1370,
+    "bracket": "1200-1400",
+    "opening": 86.8606833613072,
+    "middlegame": 75.3149296497897,
+    "endgame": 84.94439782737322
+  },
+  {
+    "username": "yarragalkdi",
+    "rating": 1238,
+    "bracket": "1200-1400",
+    "opening": 85.31731373347142,
+    "middlegame": 89.91920106237221,
+    "endgame": 90.35796164812037
+  },
+  {
+    "username": "joaozinhooooo",
+    "rating": 1264,
+    "bracket": "1200-1400",
+    "opening": 82.59686591089424,
+    "middlegame": 75.42453341025825,
+    "endgame": 73.17516373322671
+  },
+  {
+    "username": "waltercarlson",
+    "rating": 1419,
+    "bracket": "1400-1600",
+    "opening": 87.5567608724531,
+    "middlegame": 82.43673249269577,
+    "endgame": 77.64830875733925
+  },
+  {
+    "username": "wuocciaut",
+    "rating": 1533,
+    "bracket": "1400-1600",
+    "opening": 84.50788266156201,
+    "middlegame": 79.36476251806081,
+    "endgame": 84.92816071905546
+  },
+  {
+    "username": "lucfrplay",
+    "rating": 1503,
+    "bracket": "1400-1600",
+    "opening": 89.99375897606524,
+    "middlegame": 79.84152688714579,
+    "endgame": 83.06806186052523
+  },
+  {
+    "username": "rcaupin",
+    "rating": 1466,
+    "bracket": "1400-1600",
+    "opening": 95.07818837457994,
+    "middlegame": 64.57482355441749,
+    "endgame": null
+  },
+  {
+    "username": "radamf",
+    "rating": 1446,
+    "bracket": "1400-1600",
+    "opening": 82.77638862474745,
+    "middlegame": 80.73413285685751,
+    "endgame": 87.73056850178463
+  },
+  {
+    "username": "spapasotiriou",
+    "rating": 1558,
+    "bracket": "1400-1600",
+    "opening": 90.0131520571691,
+    "middlegame": 78.86138253212893,
+    "endgame": 82.06486351782847
+  },
+  {
+    "username": "whidcaptain",
+    "rating": 1449,
+    "bracket": "1400-1600",
+    "opening": 87.44751473467994,
+    "middlegame": 72.84395131560915,
+    "endgame": 76.83872829619904
+  },
+  {
+    "username": "talkinmakabro",
+    "rating": 1550,
+    "bracket": "1400-1600",
+    "opening": 86.95198281206126,
+    "middlegame": 70.4470835167271,
+    "endgame": 91.63225821503595
+  },
+  {
+    "username": "scooter4141",
+    "rating": 1450,
+    "bracket": "1400-1600",
+    "opening": 84.681700546566,
+    "middlegame": 64.29068729515934,
+    "endgame": 75.5290784947726
+  },
+  {
+    "username": "ieatdihcheese",
+    "rating": 1523,
+    "bracket": "1400-1600",
+    "opening": 90.04752943794794,
+    "middlegame": 75.19940218007707,
+    "endgame": 87.67418985763132
+  },
+  {
+    "username": "thevraimalo",
+    "rating": 1566,
+    "bracket": "1400-1600",
+    "opening": 85.09971616783128,
+    "middlegame": 71.75532513849767,
+    "endgame": 57.518115758058755
+  },
+  {
+    "username": "margoe",
+    "rating": 1762,
+    "bracket": "1600-1800",
+    "opening": 87.90513915628408,
+    "middlegame": 75.92903447081991,
+    "endgame": 82.78817536263865
+  },
+  {
+    "username": "shay241202",
+    "rating": 1700,
+    "bracket": "1600-1800",
+    "opening": 93.43965221356655,
+    "middlegame": 77.845082928526,
+    "endgame": 74.42011141144162
+  },
+  {
+    "username": "nicoleqin",
+    "rating": 1619,
+    "bracket": "1600-1800",
+    "opening": 93.9234957617907,
+    "middlegame": null,
+    "endgame": null
+  },
+  {
+    "username": "n1nja-j",
+    "rating": 1652,
+    "bracket": "1600-1800",
+    "opening": 90.09375520167143,
+    "middlegame": 81.98254454766783,
+    "endgame": 79.69513778083352
+  },
+  {
+    "username": "carminaramas",
+    "rating": 1701,
+    "bracket": "1600-1800",
+    "opening": 86.872721995145,
+    "middlegame": 72.49789408556839,
+    "endgame": 88.53007298158583
+  },
+  {
+    "username": "detectiveorange",
+    "rating": 1608,
+    "bracket": "1600-1800",
+    "opening": 89.30533521347685,
+    "middlegame": 80.14149744340449,
+    "endgame": 95.0806823506383
+  },
+  {
+    "username": "bumblebee123499999",
+    "rating": 1732,
+    "bracket": "1600-1800",
+    "opening": 94.58048645530404,
+    "middlegame": 82.78784622185592,
+    "endgame": 83.98453334605917
+  },
+  {
+    "username": "alanna-cl",
+    "rating": 1700,
+    "bracket": "1600-1800",
+    "opening": 91.8022734735095,
+    "middlegame": 86.81043680794315,
+    "endgame": 84.81789587939582
+  },
+  {
+    "username": "svepr",
+    "rating": 1685,
+    "bracket": "1600-1800",
+    "opening": 87.80152827715753,
+    "middlegame": 80.77894578187167,
+    "endgame": 80.07242212000469
+  },
+  {
+    "username": "lychee_boba",
+    "rating": 1701,
+    "bracket": "1600-1800",
+    "opening": 90.68566400379095,
+    "middlegame": 78.19039463203568,
+    "endgame": 76.38620361767941
+  },
+  {
+    "username": "random_person9876",
+    "rating": 1850,
+    "bracket": "1800-2000",
+    "opening": 91.29746272624666,
+    "middlegame": 78.17210315989179,
+    "endgame": 78.71391637359106
+  },
+  {
+    "username": "nobody267",
+    "rating": 1924,
+    "bracket": "1800-2000",
+    "opening": 89.28833135472101,
+    "middlegame": 84.9695922088247,
+    "endgame": 83.10535941437426
+  },
+  {
+    "username": "mexxicano",
+    "rating": 1970,
+    "bracket": "1800-2000",
+    "opening": 92.70856395086675,
+    "middlegame": 80.85184405954266,
+    "endgame": 77.89504591175124
+  },
+  {
+    "username": "luachess1",
+    "rating": 1895,
+    "bracket": "1800-2000",
+    "opening": 89.87316516020607,
+    "middlegame": 83.83912866223683,
+    "endgame": 71.08273952065237
+  },
+  {
+    "username": "grig1508",
+    "rating": 1997,
+    "bracket": "1800-2000",
+    "opening": 90.02921034626566,
+    "middlegame": 80.27810033563436,
+    "endgame": 76.44634330795044
+  },
+  {
+    "username": "aditi_s6390",
+    "rating": 1950,
+    "bracket": "1800-2000",
+    "opening": 89.67541468192726,
+    "middlegame": 85.90591932171975,
+    "endgame": 82.90730081988745
+  },
+  {
+    "username": "gagtemp",
+    "rating": 1862,
+    "bracket": "1800-2000",
+    "opening": 88.86992783039162,
+    "middlegame": 74.2211049890333,
+    "endgame": 89.63773934326764
+  },
+  {
+    "username": "camic96",
+    "rating": 1953,
+    "bracket": "1800-2000",
+    "opening": 92.72337510331957,
+    "middlegame": 86.69600034446654,
+    "endgame": 82.55921547796723
+  },
+  {
+    "username": "gabi_m",
+    "rating": 1907,
+    "bracket": "1800-2000",
+    "opening": 92.71002182656089,
+    "middlegame": 77.92654545549445,
+    "endgame": 69.26546975340003
+  },
+  {
+    "username": "dani_san12",
+    "rating": 1800,
+    "bracket": "1800-2000",
+    "opening": 87.07354597427674,
+    "middlegame": 75.39022129933538,
+    "endgame": 79.01612342847521
+  },
+  {
+    "username": "vanessadesca",
+    "rating": 1955,
+    "bracket": "1800-2000",
+    "opening": 87.47337158071953,
+    "middlegame": 79.7096694193021,
+    "endgame": 82.17964241293417
+  },
+  {
+    "username": "appa-avatar",
+    "rating": 2115,
+    "bracket": "2000-2200",
+    "opening": 94.79036217910257,
+    "middlegame": 82.97685187960198,
+    "endgame": 86.323161663071
+  },
+  {
+    "username": "greengrass100",
+    "rating": 2082,
+    "bracket": "2000-2200",
+    "opening": 90.21263121333465,
+    "middlegame": 84.34000114037563,
+    "endgame": 82.03106975551187
+  },
+  {
+    "username": "echoingquake",
+    "rating": 2060,
+    "bracket": "2000-2200",
+    "opening": 91.09360407801131,
+    "middlegame": 76.49840398273398,
+    "endgame": 91.23296556395644
+  },
+  {
+    "username": "lily_schirmbeck",
+    "rating": 2033,
+    "bracket": "2000-2200",
+    "opening": 91.86061068808662,
+    "middlegame": 81.0141074856268,
+    "endgame": 84.27778839885487
+  },
+  {
+    "username": "anspiracje",
+    "rating": 2042,
+    "bracket": "2000-2200",
+    "opening": 94.04966415304237,
+    "middlegame": 78.49009286840545,
+    "endgame": 87.19205888285494
+  },
+  {
+    "username": "brightpanda22",
+    "rating": 2006,
+    "bracket": "2000-2200",
+    "opening": 86.3190863375139,
+    "middlegame": 76.97938600474437,
+    "endgame": 90.41530176903537
+  },
+  {
+    "username": "chenyining99",
+    "rating": 2072,
+    "bracket": "2000-2200",
+    "opening": 93.6644410057918,
+    "middlegame": 93.76659792093723,
+    "endgame": 93.9447746308489
+  },
+  {
+    "username": "ponyqueen07",
+    "rating": 2124,
+    "bracket": "2000-2200",
+    "opening": 90.94628633226326,
+    "middlegame": 82.76592050293692,
+    "endgame": 87.63729599895079
+  },
+  {
+    "username": "skyethestar",
+    "rating": 2052,
+    "bracket": "2000-2200",
+    "opening": 93.41043630297334,
+    "middlegame": 80.29380865483486,
+    "endgame": 75.39479665759978
+  },
+  {
+    "username": "sarahahaa10",
+    "rating": 2100,
+    "bracket": "2000-2200",
+    "opening": 94.2878132629457,
+    "middlegame": 85.25660323772838,
+    "endgame": 80.66461160200862
+  },
+  {
+    "username": "flora",
+    "rating": 2223,
+    "bracket": "2200-2400",
+    "opening": 87.7725373503901,
+    "middlegame": 79.09853275443783,
+    "endgame": 81.36516961301636
+  },
+  {
+    "username": "rose107",
+    "rating": 2212,
+    "bracket": "2200-2400",
+    "opening": 94.1370623290355,
+    "middlegame": 82.48133896007069,
+    "endgame": 79.56150523225381
+  },
+  {
+    "username": "chiwii",
+    "rating": 2327,
+    "bracket": "2200-2400",
+    "opening": 91.63593542125696,
+    "middlegame": 83.10700849694413,
+    "endgame": 88.39906197196946
+  },
+  {
+    "username": "hannahsaycestreams",
+    "rating": 2337,
+    "bracket": "2200-2400",
+    "opening": 91.4371960078962,
+    "middlegame": 81.79669265184681,
+    "endgame": 79.85229760739523
+  },
+  {
+    "username": "kuwaitigm",
+    "rating": 2248,
+    "bracket": "2200-2400",
+    "opening": 93.2390755204994,
+    "middlegame": 84.33596584522637,
+    "endgame": 86.3017896422192
+  },
+  {
+    "username": "ritanovikova",
+    "rating": 2274,
+    "bracket": "2200-2400",
+    "opening": 91.13383530317337,
+    "middlegame": 79.3085615542282,
+    "endgame": 85.08382146722784
+  },
+  {
+    "username": "ikbiedremiseaan",
+    "rating": 2340,
+    "bracket": "2200-2400",
+    "opening": 95.53332101273281,
+    "middlegame": 90.51336381199859,
+    "endgame": 89.62228171496042
+  },
+  {
+    "username": "aisha_zakirova",
+    "rating": 2239,
+    "bracket": "2200-2400",
+    "opening": 95.52615569743287,
+    "middlegame": 84.27074865319119,
+    "endgame": 80.28211162896028
+  },
+  {
+    "username": "maltense",
+    "rating": 2246,
+    "bracket": "2200-2400",
+    "opening": 93.32338674980484,
+    "middlegame": 87.15320722204592,
+    "endgame": 80.6613420979492
+  },
+  {
+    "username": "superpower2700",
+    "rating": 2246,
+    "bracket": "2200-2400",
+    "opening": 95.58174963356058,
+    "middlegame": 80.17913731621948,
+    "endgame": 81.16828497621603
+  },
+  {
+    "username": "spacegirl987",
+    "rating": 2225,
+    "bracket": "2200-2400",
+    "opening": 94.93280278143209,
+    "middlegame": 81.7041429697193,
+    "endgame": 84.18627560206365
+  },
+  {
+    "username": "bashirlisaadat",
+    "rating": 2454,
+    "bracket": "2400-2600",
+    "opening": 93.2561671784772,
+    "middlegame": 88.07643737139877,
+    "endgame": 81.39701303601332
+  },
+  {
+    "username": "sara_olendo",
+    "rating": 2474,
+    "bracket": "2400-2600",
+    "opening": 90.4872953984815,
+    "middlegame": 84.0320737988372,
+    "endgame": 82.96800294377451
+  },
+  {
+    "username": "francinie",
+    "rating": 2430,
+    "bracket": "2400-2600",
+    "opening": 93.23654013484463,
+    "middlegame": 85.1517743645422,
+    "endgame": 72.53683569535139
+  },
+  {
+    "username": "asya1710",
+    "rating": 2501,
+    "bracket": "2400-2600",
+    "opening": 92.85745093104126,
+    "middlegame": 83.33804294916868,
+    "endgame": 86.62438803649574
+  },
+  {
+    "username": "mashafromrussia",
+    "rating": 2477,
+    "bracket": "2400-2600",
+    "opening": 94.00392610752799,
+    "middlegame": 82.84936839088054,
+    "endgame": 83.09261009335609
+  },
+  {
+    "username": "asortafairytale",
+    "rating": 2417,
+    "bracket": "2400-2600",
+    "opening": 93.08880688277527,
+    "middlegame": 77.23316513427093,
+    "endgame": 86.41619481085452
+  },
+  {
+    "username": "bylavochka",
+    "rating": 2445,
+    "bracket": "2400-2600",
+    "opening": 94.47655634402713,
+    "middlegame": 85.77435055284143,
+    "endgame": 88.70215308029672
+  },
+  {
+    "username": "olya_oblachko",
+    "rating": 2426,
+    "bracket": "2400-2600",
+    "opening": 93.79324863513901,
+    "middlegame": 88.1297965420821,
+    "endgame": 86.36382099734925
+  },
+  {
+    "username": "skandachampion",
+    "rating": 2729,
+    "bracket": "2600-2800",
+    "opening": 95.47029387913773,
+    "middlegame": 86.48605696280738,
+    "endgame": 84.35786973822785
+  },
+  {
+    "username": "bad4life",
+    "rating": 2703,
+    "bracket": "2600-2800",
+    "opening": 92.53769812300585,
+    "middlegame": 87.57751649647078,
+    "endgame": 88.62448155156677
+  },
+  {
+    "username": "drwonderkid",
+    "rating": 2604,
+    "bracket": "2600-2800",
+    "opening": 92.89739356552276,
+    "middlegame": 82.69050932152913,
+    "endgame": 86.34034971659199
+  },
+  {
+    "username": "chessnycm",
+    "rating": 2630,
+    "bracket": "2600-2800",
+    "opening": 95.09299972553592,
+    "middlegame": 80.39328199405487,
+    "endgame": 86.80906455326557
+  },
+  {
+    "username": "sodastream007",
+    "rating": 2666,
+    "bracket": "2600-2800",
+    "opening": 94.1076486687555,
+    "middlegame": 89.9739814068981,
+    "endgame": 91.3017844217959
+  },
+  {
+    "username": "muncettin",
+    "rating": 2696,
+    "bracket": "2600-2800",
+    "opening": 93.80144310720955,
+    "middlegame": 81.37055594013003,
+    "endgame": 86.91519398665432
+  },
+  {
+    "username": "ryandungca",
+    "rating": 2629,
+    "bracket": "2600-2800",
+    "opening": 93.26133698133962,
+    "middlegame": 86.03007109707883,
+    "endgame": 91.48969827747001
+  },
+  {
+    "username": "baranovski12",
+    "rating": 2639,
+    "bracket": "2600-2800",
+    "opening": 92.65937195496637,
+    "middlegame": 77.84371091661104,
+    "endgame": 88.69888748560635
+  },
+  {
+    "username": "gyoung11",
+    "rating": 2667,
+    "bracket": "2600-2800",
+    "opening": 95.47945085645466,
+    "middlegame": 89.38408882225818,
+    "endgame": 87.01236442814444
+  },
+  {
+    "username": "xiaottt5164",
+    "rating": 2666,
+    "bracket": "2600-2800",
+    "opening": 95.08746953607144,
+    "middlegame": 83.58056589200837,
+    "endgame": 84.83867050373938
+  },
+  {
+    "username": "tunartank",
+    "rating": 2907,
+    "bracket": "2800+",
+    "opening": 96.00582517332575,
+    "middlegame": 86.74316341731785,
+    "endgame": 85.70491270567362
+  },
+  {
+    "username": "bursabbsatranc",
+    "rating": 2820,
+    "bracket": "2800+",
+    "opening": 94.80384746422742,
+    "middlegame": 82.4124401186027,
+    "endgame": 84.99619289267261
+  },
+  {
+    "username": "aborigen_came",
+    "rating": 2901,
+    "bracket": "2800+",
+    "opening": 93.53925711393615,
+    "middlegame": 90.02287351064884,
+    "endgame": 87.07397456011336
+  },
+  {
+    "username": "name-505",
+    "rating": 2841,
+    "bracket": "2800+",
+    "opening": 95.20452263535813,
+    "middlegame": 83.0877381032486,
+    "endgame": 75.65353504893677
+  },
+  {
+    "username": "shadowking71",
+    "rating": 2921,
+    "bracket": "2800+",
+    "opening": 94.50439102775138,
+    "middlegame": 86.29777807850088,
+    "endgame": 86.52829705064696
+  },
+  {
+    "username": "gunner214",
+    "rating": 2931,
+    "bracket": "2800+",
+    "opening": 94.98581329381571,
+    "middlegame": 87.8740155039104,
+    "endgame": 84.40282810496292
+  },
+  {
+    "username": "kw33ngambit",
+    "rating": 2800,
+    "bracket": "2800+",
+    "opening": 94.2747326063246,
+    "middlegame": 88.88400280028954,
+    "endgame": 87.16346546203327
+  },
+  {
+    "username": "rychessmaster1",
+    "rating": 2860,
+    "bracket": "2800+",
+    "opening": 95.71430943306477,
+    "middlegame": 84.14745283876148,
+    "endgame": 76.89978152095225
+  },
+  {
+    "username": "crazy_girl99",
+    "rating": 2880,
+    "bracket": "2800+",
+    "opening": 93.80235234358489,
+    "middlegame": 86.39040850325232,
+    "endgame": 89.7511900877794
+  },
+  {
+    "username": "chess94cu",
+    "rating": 2815,
+    "bracket": "2800+",
+    "opening": 94.4104001794535,
+    "middlegame": 88.4611332026989,
+    "endgame": 87.84848277423457
+  },
+  {
+    "username": "maitreia",
+    "rating": 2889,
+    "bracket": "2800+",
+    "opening": 94.68937140746974,
+    "middlegame": 87.45376917742603,
+    "endgame": 88.51418619178793
+  },
+  {
+    "username": "jjcc2026",
+    "rating": 112,
+    "bracket": "0-800",
+    "opening": 51.91750538811179,
+    "middlegame": 55.87081107791341,
+    "endgame": 75.65135251057096
+  },
+  {
+    "username": "jussmannpheonix",
+    "rating": 459,
+    "bracket": "0-800",
+    "opening": 69.83339459972379,
+    "middlegame": 64.53691547728272,
+    "endgame": 72.42004117842353
+  },
+  {
+    "username": "theleapingpie",
+    "rating": 363,
+    "bracket": "0-800",
+    "opening": 74.59955054857532,
+    "middlegame": 56.499400495641645,
+    "endgame": 73.36421796858991
+  },
+  {
+    "username": "szpiegzkrainydeszczowco",
+    "rating": 186,
+    "bracket": "0-800",
+    "opening": 71.56056012526233,
+    "middlegame": 70.3076727347889,
+    "endgame": 95.27566104380502
+  },
+  {
+    "username": "robertobobos",
+    "rating": 358,
+    "bracket": "0-800",
+    "opening": 74.86933917508495,
+    "middlegame": 69.88855861220564,
+    "endgame": 83.43839223281614
+  },
+  {
+    "username": "fausst_f",
+    "rating": 726,
+    "bracket": "0-800",
+    "opening": 84.38819613317408,
+    "middlegame": 70.43213666098852,
+    "endgame": 79.81674251314283
+  },
+  {
+    "username": "rikitchie",
+    "rating": 394,
+    "bracket": "0-800",
+    "opening": 78.44422266930712,
+    "middlegame": 75.76197522157125,
+    "endgame": 77.99458622539538
+  },
+  {
+    "username": "1oldoak",
+    "rating": 352,
+    "bracket": "0-800",
+    "opening": 71.47396942116504,
+    "middlegame": 69.62532733151701,
+    "endgame": 78.61013159381415
+  },
+  {
+    "username": "damjan_450",
+    "rating": 452,
+    "bracket": "0-800",
+    "opening": 79.03196094138204,
+    "middlegame": 53.09425761149554,
+    "endgame": 86.16966837189322
+  },
+  {
+    "username": "heyblob",
+    "rating": 614,
+    "bracket": "0-800",
+    "opening": 80.0484189854891,
+    "middlegame": 76.8368839254187,
+    "endgame": 88.39554855004671
+  },
+  {
+    "username": "wildboar187",
+    "rating": 917,
+    "bracket": "800-1000",
+    "opening": 84.2683608736291,
+    "middlegame": 70.33314048497948,
+    "endgame": 81.63998927838078
+  },
+  {
+    "username": "naggismi3",
+    "rating": 831,
+    "bracket": "800-1000",
+    "opening": 82.95302622091809,
+    "middlegame": 66.54532107872936,
+    "endgame": 80.38595299493817
+  },
+  {
+    "username": "chessmemory2026",
+    "rating": 865,
+    "bracket": "800-1000",
+    "opening": 87.51576594589929,
+    "middlegame": 73.26363171897722,
+    "endgame": 87.72389443626402
+  },
+  {
+    "username": "steinbitur",
+    "rating": 969,
+    "bracket": "800-1000",
+    "opening": 84.09916499696934,
+    "middlegame": 70.72570123567336,
+    "endgame": 81.80123445296839
+  },
+  {
+    "username": "runarmagnusson",
+    "rating": 972,
+    "bracket": "800-1000",
+    "opening": 94.20144616447712,
+    "middlegame": 73.13838730555096,
+    "endgame": 97.82916433762267
+  },
+  {
+    "username": "nonni1802",
+    "rating": 927,
+    "bracket": "800-1000",
+    "opening": 79.96325972349146,
+    "middlegame": 71.08503642071565,
+    "endgame": 93.73686919602663
+  },
+  {
+    "username": "mzungu00",
+    "rating": 803,
+    "bracket": "800-1000",
+    "opening": 83.98131241472183,
+    "middlegame": 73.22055271141815,
+    "endgame": 80.86998359831951
+  },
+  {
+    "username": "jempi61",
+    "rating": 821,
+    "bracket": "800-1000",
+    "opening": 83.54591071243236,
+    "middlegame": 66.01100871522779,
+    "endgame": 63.51936339589836
+  },
+  {
+    "username": "cc9dd10",
+    "rating": 868,
+    "bracket": "800-1000",
+    "opening": 84.80833090883812,
+    "middlegame": 71.75442403972191,
+    "endgame": 88.50300588940478
+  },
+  {
+    "username": "treeslounge",
+    "rating": 1055,
+    "bracket": "1000-1200",
+    "opening": 81.11205152760667,
+    "middlegame": 74.970541435172,
+    "endgame": 86.64732542103548
+  },
+  {
+    "username": "ansans24",
+    "rating": 1175,
+    "bracket": "1000-1200",
+    "opening": 86.39482260009652,
+    "middlegame": 81.84252187498558,
+    "endgame": 85.5276994143744
+  },
+  {
+    "username": "kingallinn",
+    "rating": 1193,
+    "bracket": "1000-1200",
+    "opening": 85.773019143211,
+    "middlegame": 68.08244214751942,
+    "endgame": 75.12523913203086
+  },
+  {
+    "username": "xyzp4",
+    "rating": 1025,
+    "bracket": "1000-1200",
+    "opening": 84.29027601598405,
+    "middlegame": 73.04636438206435,
+    "endgame": 70.37656869879923
+  },
+  {
+    "username": "heinesen1",
+    "rating": 1167,
+    "bracket": "1000-1200",
+    "opening": 86.52472339566252,
+    "middlegame": 75.34965267416194,
+    "endgame": 76.83387435948329
+  },
+  {
+    "username": "rlnick573",
+    "rating": 1188,
+    "bracket": "1000-1200",
+    "opening": 84.50020891914298,
+    "middlegame": 59.91366908286456,
+    "endgame": 74.60345724056666
+  },
+  {
+    "username": "unreal_d4ny",
+    "rating": 1134,
+    "bracket": "1000-1200",
+    "opening": 85.67600420700315,
+    "middlegame": 71.61241108790479,
+    "endgame": 75.1493161735425
+  },
+  {
+    "username": "eglzatox",
+    "rating": 1177,
+    "bracket": "1000-1200",
+    "opening": 84.85432567920591,
+    "middlegame": 77.90914954074417,
+    "endgame": 77.2643074210466
+  },
+  {
+    "username": "jaumemk",
+    "rating": 1130,
+    "bracket": "1000-1200",
+    "opening": 78.15975089918246,
+    "middlegame": 63.57513362748151,
+    "endgame": 75.93408113229727
+  },
+  {
+    "username": "leberkasvernichter",
+    "rating": 1141,
+    "bracket": "1000-1200",
+    "opening": 85.3272451770093,
+    "middlegame": 72.45238650366854,
+    "endgame": 83.97059323504378
+  },
+  {
+    "username": "puffink",
+    "rating": 1595,
+    "bracket": "1400-1600",
+    "opening": 89.34329429258057,
+    "middlegame": 78.73904485644815,
+    "endgame": 78.50145024880351
+  },
+  {
+    "username": "itreallybeyaboy",
+    "rating": 1545,
+    "bracket": "1400-1600",
+    "opening": 85.5372031885598,
+    "middlegame": 74.89768215056058,
+    "endgame": 82.13772940951208
+  },
+  {
+    "username": "vagos_com",
+    "rating": 1404,
+    "bracket": "1400-1600",
+    "opening": 93.22051213586793,
+    "middlegame": 86.65206610258231,
+    "endgame": 89.46751740761732
+  },
+  {
+    "username": "weevil0",
+    "rating": 1510,
+    "bracket": "1400-1600",
+    "opening": 83.7788013301794,
+    "middlegame": 76.47425403204431,
+    "endgame": 84.73031090755254
+  },
+  {
+    "username": "echzii",
+    "rating": 1581,
+    "bracket": "1400-1600",
+    "opening": 84.9893713571494,
+    "middlegame": 68.97563301414823,
+    "endgame": 79.9648452995891
+  },
+  {
+    "username": "aditi607",
+    "rating": 1559,
+    "bracket": "1400-1600",
+    "opening": 91.03576751436628,
+    "middlegame": 69.45927970069556,
+    "endgame": 91.71626411737198
+  },
+  {
+    "username": "novichok-12k",
+    "rating": 1487,
+    "bracket": "1400-1600",
+    "opening": 84.10315873984035,
+    "middlegame": 77.19745776948427,
+    "endgame": 84.2007261196285
+  },
+  {
+    "username": "fierrochasepro",
+    "rating": 1406,
+    "bracket": "1400-1600",
+    "opening": 85.9317101043069,
+    "middlegame": 73.99698362224431,
+    "endgame": 84.65713207427338
+  },
+  {
+    "username": "epica11",
+    "rating": 1789,
+    "bracket": "1600-1800",
+    "opening": 88.7685735333948,
+    "middlegame": 75.75244904629778,
+    "endgame": 78.74519141855409
+  },
+  {
+    "username": "rngm29",
+    "rating": 1607,
+    "bracket": "1600-1800",
+    "opening": 85.41286652936155,
+    "middlegame": 72.9672648991985,
+    "endgame": 77.32516188075367
+  },
+  {
+    "username": "sandykay2016",
+    "rating": 1665,
+    "bracket": "1600-1800",
+    "opening": 89.4532179943038,
+    "middlegame": 78.75657019301038,
+    "endgame": 72.10384912545916
+  },
+  {
+    "username": "fascimate",
+    "rating": 1781,
+    "bracket": "1600-1800",
+    "opening": 90.97228757730798,
+    "middlegame": 82.44080729842112,
+    "endgame": 84.3804457067302
+  },
+  {
+    "username": "odmaaenkhsaikhan",
+    "rating": 1666,
+    "bracket": "1600-1800",
+    "opening": 89.82264192551712,
+    "middlegame": 68.71358089867873,
+    "endgame": 55.433681556932925
+  },
+  {
+    "username": "coraa29",
+    "rating": 1797,
+    "bracket": "1600-1800",
+    "opening": 88.99017925018725,
+    "middlegame": 76.8102278229174,
+    "endgame": 85.76905981519862
+  },
+  {
+    "username": "yamoca",
+    "rating": 1745,
+    "bracket": "1600-1800",
+    "opening": 92.87643265570298,
+    "middlegame": 82.54951492334101,
+    "endgame": 88.47111819042229
+  },
+  {
+    "username": "karlydx",
+    "rating": 1737,
+    "bracket": "1600-1800",
+    "opening": 88.55541144053207,
+    "middlegame": 79.85186682569007,
+    "endgame": 82.45623702631367
+  },
+  {
+    "username": "hashtagchess",
+    "rating": 1772,
+    "bracket": "1600-1800",
+    "opening": 89.1425327264277,
+    "middlegame": 74.22296166765551,
+    "endgame": 71.64886304944172
+  },
+  {
+    "username": "viviheinrichs89",
+    "rating": 1981,
+    "bracket": "1800-2000",
+    "opening": 89.80851703451802,
+    "middlegame": 74.90302491351649,
+    "endgame": 77.82447579604256
+  },
+  {
+    "username": "lunathetuna2013",
+    "rating": 1848,
+    "bracket": "1800-2000",
+    "opening": 94.14813478750142,
+    "middlegame": 75.29504820134179,
+    "endgame": 76.40608148886449
+  },
+  {
+    "username": "pegasss",
+    "rating": 1888,
+    "bracket": "1800-2000",
+    "opening": 90.11941379972852,
+    "middlegame": 82.67099331074877,
+    "endgame": 91.38690591193085
+  },
+  {
+    "username": "irisqueen",
+    "rating": 1920,
+    "bracket": "1800-2000",
+    "opening": 92.49053167043814,
+    "middlegame": 87.3378327691871,
+    "endgame": 85.56593965914453
+  },
+  {
+    "username": "squishyminions",
+    "rating": 1807,
+    "bracket": "1800-2000",
+    "opening": 91.83187055302332,
+    "middlegame": 84.10394905127177,
+    "endgame": 86.86231642783008
+  },
+  {
+    "username": "redrainbowrubys",
+    "rating": 1858,
+    "bracket": "1800-2000",
+    "opening": 91.55180795283074,
+    "middlegame": 83.86061009708713,
+    "endgame": 86.01689806069106
+  },
+  {
+    "username": "eolo2020",
+    "rating": 1824,
+    "bracket": "1800-2000",
+    "opening": 89.29823256916664,
+    "middlegame": 78.19478508869756,
+    "endgame": 89.46975406849316
+  },
+  {
+    "username": "pizzabiteabite",
+    "rating": 2130,
+    "bracket": "2000-2200",
+    "opening": 92.04121968751738,
+    "middlegame": 79.53650180754023,
+    "endgame": 85.04343807536192
+  },
+  {
+    "username": "laraine12",
+    "rating": 2108,
+    "bracket": "2000-2200",
+    "opening": 93.23922221842594,
+    "middlegame": 83.05906721013143,
+    "endgame": 84.85450870049861
+  },
+  {
+    "username": "angelrth",
+    "rating": 2167,
+    "bracket": "2000-2200",
+    "opening": 91.96212203994808,
+    "middlegame": 78.70310920707058,
+    "endgame": 69.04560837399187
+  },
+  {
+    "username": "ailime26",
+    "rating": 2034,
+    "bracket": "2000-2200",
+    "opening": 93.43335175789164,
+    "middlegame": 83.01800168621587,
+    "endgame": 77.94774211757138
+  },
+  {
+    "username": "kritipatel",
+    "rating": 2142,
+    "bracket": "2000-2200",
+    "opening": 85.49252742966267,
+    "middlegame": 82.37663047181358,
+    "endgame": 80.0782462582252
+  },
+  {
+    "username": "machupikchu11",
+    "rating": 2159,
+    "bracket": "2000-2200",
+    "opening": 87.5233065019125,
+    "middlegame": 84.87139312755009,
+    "endgame": 78.54865964701995
+  },
+  {
+    "username": "katheringomezarias",
+    "rating": 2089,
+    "bracket": "2000-2200",
+    "opening": 91.40826098151217,
+    "middlegame": 74.51434455664376,
+    "endgame": 68.77685994223827
+  },
+  {
+    "username": "troublemaker-09",
+    "rating": 2039,
+    "bracket": "2000-2200",
+    "opening": 93.56021528069135,
+    "middlegame": 88.22893666098211,
+    "endgame": 82.78788729563777
+  },
+  {
+    "username": "neelava99",
+    "rating": 2067,
+    "bracket": "2000-2200",
+    "opening": 93.2450776458325,
+    "middlegame": 80.66256916549324,
+    "endgame": 87.00910420053349
+  },
+  {
+    "username": "wcm-mexicana",
+    "rating": 2358,
+    "bracket": "2200-2400",
+    "opening": 90.10318203342717,
+    "middlegame": 81.36896381942968,
+    "endgame": 78.78017230929844
+  },
+  {
+    "username": "nanditha_chess",
+    "rating": 2296,
+    "bracket": "2200-2400",
+    "opening": 95.69769297961065,
+    "middlegame": 78.74338010789391,
+    "endgame": 85.85930888014667
+  },
+  {
+    "username": "wuyunfuyue",
+    "rating": 2335,
+    "bracket": "2200-2400",
+    "opening": 90.82163082751401,
+    "middlegame": 78.76082538576892,
+    "endgame": 86.5067765038342
+  },
+  {
+    "username": "chessgirl_leyla",
+    "rating": 2303,
+    "bracket": "2200-2400",
+    "opening": 94.63813753844069,
+    "middlegame": 78.82773635328036,
+    "endgame": 89.17913353300128
+  },
+  {
+    "username": "kasztan_10",
+    "rating": 2216,
+    "bracket": "2200-2400",
+    "opening": 93.42288015597151,
+    "middlegame": 85.1965975981277,
+    "endgame": 83.0957927231023
+  },
+  {
+    "username": "milkklove",
+    "rating": 2245,
+    "bracket": "2200-2400",
+    "opening": 91.9653999187756,
+    "middlegame": 82.62401219829694,
+    "endgame": 79.07442822530442
+  },
+  {
+    "username": "chickay",
+    "rating": 2272,
+    "bracket": "2200-2400",
+    "opening": 93.446531071801,
+    "middlegame": 82.2882573171979,
+    "endgame": 84.56152581415998
+  },
+  {
+    "username": "milana-alex",
+    "rating": 2325,
+    "bracket": "2200-2400",
+    "opening": 93.82663037514023,
+    "middlegame": 82.33408515580115,
+    "endgame": 88.10309234159732
+  },
+  {
+    "username": "bright_panda23",
+    "rating": 2432,
+    "bracket": "2400-2600",
+    "opening": 89.47176995913155,
+    "middlegame": 78.52502097025439,
+    "endgame": 88.41123005457293
+  },
+  {
+    "username": "milenak_09",
+    "rating": 2535,
+    "bracket": "2400-2600",
+    "opening": 95.83747981993596,
+    "middlegame": 84.05583863621295,
+    "endgame": 83.19389746910647
+  },
+  {
+    "username": "ninetowine",
+    "rating": 2401,
+    "bracket": "2400-2600",
+    "opening": 93.05210865760111,
+    "middlegame": 78.85274111191951,
+    "endgame": 76.1074561894503
+  },
+  {
+    "username": "elynn2h",
+    "rating": 2497,
+    "bracket": "2400-2600",
+    "opening": 93.68486956488138,
+    "middlegame": 83.33304952806591,
+    "endgame": 87.27412187246462
+  },
+  {
+    "username": "almaj98",
+    "rating": 2401,
+    "bracket": "2400-2600",
+    "opening": 92.89002642423647,
+    "middlegame": 85.72683925205773,
+    "endgame": 66.7000709344468
+  },
+  {
+    "username": "chessprincesa1",
+    "rating": 2455,
+    "bracket": "2400-2600",
+    "opening": 93.85675356020104,
+    "middlegame": 83.61712312899843,
+    "endgame": 87.52946609884746
+  },
+  {
+    "username": "xsenon054",
+    "rating": 2476,
+    "bracket": "2400-2600",
+    "opening": 90.23264405345974,
+    "middlegame": 80.5029571287921,
+    "endgame": 83.38241633956709
+  },
+  {
+    "username": "kapibara_warri0r",
+    "rating": 2492,
+    "bracket": "2400-2600",
+    "opening": 92.35029354107793,
+    "middlegame": 83.68758078284677,
+    "endgame": 87.04367858113746
+  },
+  {
+    "username": "pihu_123gupta",
+    "rating": 2490,
+    "bracket": "2400-2600",
+    "opening": 94.36348282572371,
+    "middlegame": 89.84518019385756,
+    "endgame": 83.88463609505321
+  },
+  {
+    "username": "4_erg_sakenova",
+    "rating": 2406,
+    "bracket": "2400-2600",
+    "opening": 93.9335736803548,
+    "middlegame": 78.67892296341222,
+    "endgame": 78.83815007880965
+  },
+  {
+    "username": "awesomechess111111",
+    "rating": 2409,
+    "bracket": "2400-2600",
+    "opening": 94.89714410432984,
+    "middlegame": 84.18138290224609,
+    "endgame": 90.48764993831995
+  },
+  {
+    "username": "1spongebob",
+    "rating": 2440,
+    "bracket": "2400-2600",
+    "opening": 92.78340689758286,
+    "middlegame": 76.46242295061927,
+    "endgame": 77.22536012005003
+  },
+  {
+    "username": "neriida",
+    "rating": 2501,
+    "bracket": "2400-2600",
+    "opening": 94.68207765671673,
+    "middlegame": 82.67932020119002,
+    "endgame": 81.67299098281305
+  },
+  {
+    "username": "vesnatesting64",
+    "rating": 2712,
+    "bracket": "2600-2800",
+    "opening": 92.3246413156572,
+    "middlegame": 84.64847814948466,
+    "endgame": 87.76202390472666
+  },
+  {
+    "username": "aiaru-01",
+    "rating": 2640,
+    "bracket": "2600-2800",
+    "opening": 95.77436415633441,
+    "middlegame": 87.62181948504202,
+    "endgame": 81.76798773812678
+  },
+  {
+    "username": "mkforever",
+    "rating": 2653,
+    "bracket": "2600-2800",
+    "opening": 95.0041436633435,
+    "middlegame": 83.43559829735403,
+    "endgame": 89.69584386367214
+  },
+  {
+    "username": "liashkevich",
+    "rating": 2664,
+    "bracket": "2600-2800",
+    "opening": 97.22354721636367,
+    "middlegame": 87.66650366642844,
+    "endgame": 86.58381538564504
+  },
+  {
+    "username": "nicolas_2509",
+    "rating": 2623,
+    "bracket": "2600-2800",
+    "opening": 90.52538159970652,
+    "middlegame": 82.79519661416401,
+    "endgame": 87.31832943916983
+  },
+  {
+    "username": "ht1010",
+    "rating": 2605,
+    "bracket": "2600-2800",
+    "opening": 94.6262048956747,
+    "middlegame": 85.32412869009615,
+    "endgame": 84.72165209211927
+  },
+  {
+    "username": "matvamatva",
+    "rating": 2799,
+    "bracket": "2600-2800",
+    "opening": 93.74499342040028,
+    "middlegame": 89.51676714165458,
+    "endgame": 91.02693419385658
+  },
+  {
+    "username": "shanemelaughcm",
+    "rating": 2615,
+    "bracket": "2600-2800",
+    "opening": 93.91844127154383,
+    "middlegame": 86.23994124689,
+    "endgame": 80.03144014824083
+  },
+  {
+    "username": "cocoguette23",
+    "rating": 2771,
+    "bracket": "2600-2800",
+    "opening": 95.95373660367304,
+    "middlegame": 93.30763059634471,
+    "endgame": 88.80821612316728
+  },
+  {
+    "username": "denizdirikolu09",
+    "rating": 2854,
+    "bracket": "2800+",
+    "opening": 93.75798037401331,
+    "middlegame": 87.85643807769806,
+    "endgame": 82.99486939322112
+  },
+  {
+    "username": "alexboy14",
+    "rating": 2892,
+    "bracket": "2800+",
+    "opening": 94.01346063109564,
+    "middlegame": 88.87397403629359,
+    "endgame": 92.64714630429526
+  },
+  {
+    "username": "djamir",
+    "rating": 2911,
+    "bracket": "2800+",
+    "opening": 91.23024582324159,
+    "middlegame": 91.50879337994135,
+    "endgame": 87.12727651160458
+  },
+  {
+    "username": "aslanov_umid",
+    "rating": 2823,
+    "bracket": "2800+",
+    "opening": 96.19422546833353,
+    "middlegame": 86.40512836578752,
+    "endgame": 81.61119057195098
+  },
+  {
+    "username": "gp9isback23",
+    "rating": 2860,
+    "bracket": "2800+",
+    "opening": 95.81857202628483,
+    "middlegame": 89.66309852663782,
+    "endgame": 86.22132689876995
+  },
+  {
+    "username": "readyskate",
+    "rating": 3024,
+    "bracket": "2800+",
+    "opening": 96.37973659162303,
+    "middlegame": 91.05893133897635,
+    "endgame": 92.22059636471637
+  },
+  {
+    "username": "pavle896",
+    "rating": 2814,
+    "bracket": "2800+",
+    "opening": 94.48905987186228,
+    "middlegame": 85.74772907400283,
+    "endgame": 90.58056858592352
+  },
+  {
+    "username": "thuringianfighter",
+    "rating": 2801,
+    "bracket": "2800+",
+    "opening": 94.9910094563063,
+    "middlegame": 83.89484131912721,
+    "endgame": 86.49695850867876
   }
 ]

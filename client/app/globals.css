@@ -26,3 +26,8 @@ body {
   font-weight: 600;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Hide Next.js dev indicator */
+[data-next-badge-root] {
+  display: none !important;
+}

@@ -2,6 +2,7 @@
 
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "./AuthContext";
 import { UserProvider } from "./UserContext";
 import Sidebar from "./Sidebar";
 
@@ -29,10 +30,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <UserProvider>
-          <Sidebar />
-          <div style={{ marginLeft: 230 }}>{children}</div>
-        </UserProvider>
+        <AuthProvider>
+          <UserProvider>
+            <Sidebar />
+            <div style={{ marginLeft: 230 }}>{children}</div>
+          </UserProvider>
+        </AuthProvider>
       </body>
     </html>
   );

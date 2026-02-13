@@ -14,13 +14,15 @@ enum Result {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  username  String   @unique
-  platform  String   @default("chesscom")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  games     Game[]
-  puzzles   Puzzle[]
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  platform     String   @default("chesscom")
+  email        String?  @unique
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  games        Game[]
+  puzzles      Puzzle[]
 }
 
 enum Side {

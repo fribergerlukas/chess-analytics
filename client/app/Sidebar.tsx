@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent } from "react";
+import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUserContext } from "./UserContext";
+import { useAuth } from "./AuthContext";
 
 const NAV_ITEMS = [
   {
@@ -28,20 +29,46 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  {
+    label: "Beat your friends",
+    href: "/beat-your-friends",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 2l6 6-2 2-6-6zM18 2l-6 6 2 2 6-6z" />
+        <path d="M12 8v4" />
+        <path d="M8 14l4-2 4 2" />
+        <path d="M6 18h12" />
+        <path d="M8 22h8" />
+        <path d="M10 18v4" />
+        <path d="M14 18v4" />
+      </svg>
+    ),
+  },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const {
-    username,
-    setUsername,
-    queriedUser,
-    triggerSearch,
-  } = useUserContext();
+  const { queriedUser } = useUserContext();
+  const { authUser, authLoading, authError, clearAuthError, login, signup, logout } = useAuth();
 
-  function handleSubmit(e: FormEvent) {
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [signupUsername, setSignupUsername] = useState("");
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+
+  async function handleAuthSubmit(e: FormEvent) {
     e.preventDefault();
-    triggerSearch();
+    setAuthSubmitting(true);
+    try {
+      if (authMode === "login") {
+        await login(authEmail, authPassword);
+      } else {
+        await signup(authEmail, authPassword, signupUsername);
+      }
+    } finally {
+      setAuthSubmitting(false);
+    }
   }
 
   return (
@@ -64,112 +91,218 @@ export default function Sidebar() {
       <div style={{ padding: "20px 20px 16px" }}>
         <Link
           href="/"
-          className="font-extrabold"
+          className="font-extrabold flex items-center gap-3"
           style={{ color: "#fff", textDecoration: "none", fontSize: 18, letterSpacing: "-0.01em" }}
         >
+          <svg width="28" height="28" viewBox="0 0 45 45" fill="none">
+            {/* Classic chess king — cburnett style */}
+            {/* Cross */}
+            <rect x="20.5" y="2" width="4" height="8" rx="1" fill="#81b64c" />
+            <rect x="17" y="4" width="11" height="4" rx="1" fill="#81b64c" />
+            {/* Crown points */}
+            <path d="M10 16 C10 16 12 13 14 14 C16 15 16 12 16 12 L17 10 C17 10 19 12.5 22.5 12.5 C26 12.5 28 10 28 10 L29 12 C29 12 29 15 31 14 C33 13 35 16 35 16 L35 20 C35 20 30 18 22.5 18 C15 18 10 20 10 20 Z" fill="#81b64c" />
+            {/* Body */}
+            <path d="M10 20 C10 20 8 28 8 32 C8 34 10 36 10 36 L35 36 C35 36 37 34 37 32 C37 28 35 20 35 20 C35 20 30 22 22.5 22 C15 22 10 20 10 20 Z" fill="#81b64c" />
+            {/* Base */}
+            <rect x="7" y="36" width="31" height="4" rx="1.5" fill="#81b64c" />
+            <rect x="9" y="40" width="27" height="3" rx="1" fill="#81b64c" />
+          </svg>
           Chess Arena
         </Link>
       </div>
 
-      {/* Search section */}
-      <form onSubmit={handleSubmit} style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-        <input
-          type="text"
-          placeholder="chess.com username..."
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          style={{
-            width: "100%",
-            padding: "10px 14px",
-            fontSize: 13,
-            fontWeight: 600,
-            borderRadius: 8,
-            border: "none",
-            backgroundColor: "#1c1b19",
-            color: "#fff",
-            outline: "none",
-          }}
-        />
-        <button
-          type="submit"
-          disabled={!username.trim()}
-          style={{
-            width: "100%",
-            padding: "10px",
-            fontSize: 14,
-            fontWeight: 800,
-            borderRadius: 8,
-            border: "none",
-            backgroundColor: "#81b64c",
-            color: "#fff",
-            cursor: username.trim() ? "pointer" : "not-allowed",
-            opacity: username.trim() ? 1 : 0.5,
-            letterSpacing: "0.01em",
-          }}
-        >
-          Search
-        </button>
-      </form>
-
-      {/* Divider */}
-      <div style={{ borderTop: "1px solid #3d3a37", margin: "4px 16px 4px" }} />
-
-      {/* Navigation */}
-      <nav style={{ padding: "8px 8px 0" }}>
-        {NAV_ITEMS.map((item) => {
-          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center gap-3 transition-all"
+      {/* Auth form — at the top when logged out */}
+      {!authUser && !authLoading && (
+        <div style={{ padding: "0 14px 14px" }}>
+          <form onSubmit={handleAuthSubmit} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <input
+              type="email"
+              placeholder="Email"
+              value={authEmail}
+              onChange={(e) => { setAuthEmail(e.target.value); clearAuthError(); }}
               style={{
-                padding: "12px 14px",
-                fontSize: 14,
-                fontWeight: 700,
-                color: active ? "#fff" : "#9b9895",
-                textDecoration: "none",
-                borderRadius: 8,
-                backgroundColor: active ? "#3a3733" : "transparent",
-                marginBottom: 2,
+                width: "100%",
+                padding: "9px 12px",
+                fontSize: 12,
+                fontWeight: 600,
+                borderRadius: 6,
+                border: "none",
+                backgroundColor: "#1c1b19",
+                color: "#fff",
+                outline: "none",
               }}
-              onMouseEnter={(e) => {
-                if (!active) {
-                  e.currentTarget.style.backgroundColor = "#3a3733";
-                  e.currentTarget.style.color = "#fff";
-                }
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={authPassword}
+              onChange={(e) => { setAuthPassword(e.target.value); clearAuthError(); }}
+              style={{
+                width: "100%",
+                padding: "9px 12px",
+                fontSize: 12,
+                fontWeight: 600,
+                borderRadius: 6,
+                border: "none",
+                backgroundColor: "#1c1b19",
+                color: "#fff",
+                outline: "none",
               }}
-              onMouseLeave={(e) => {
-                if (!active) {
-                  e.currentTarget.style.backgroundColor = "transparent";
-                  e.currentTarget.style.color = "#9b9895";
-                }
+            />
+            {authMode === "signup" && (
+              <input
+                type="text"
+                placeholder="chess.com username"
+                value={signupUsername}
+                onChange={(e) => { setSignupUsername(e.target.value); clearAuthError(); }}
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  borderRadius: 6,
+                  border: "none",
+                  backgroundColor: "#1c1b19",
+                  color: "#fff",
+                  outline: "none",
+                }}
+              />
+            )}
+            {authError && (
+              <p style={{ fontSize: 11, fontWeight: 700, color: "#e05252", margin: 0 }}>{authError}</p>
+            )}
+            <button
+              type="submit"
+              disabled={authSubmitting}
+              style={{
+                width: "100%",
+                padding: "9px",
+                fontSize: 13,
+                fontWeight: 800,
+                borderRadius: 6,
+                border: "none",
+                backgroundColor: "#81b64c",
+                color: "#fff",
+                cursor: authSubmitting ? "not-allowed" : "pointer",
+                opacity: authSubmitting ? 0.6 : 1,
               }}
             >
-              {item.icon}
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
+              {authSubmitting ? "..." : authMode === "login" ? "Log In" : "Sign Up"}
+            </button>
+            <p
+              onClick={() => { setAuthMode(authMode === "login" ? "signup" : "login"); clearAuthError(); }}
+              style={{ fontSize: 11, fontWeight: 600, color: "#9b9895", textAlign: "center", cursor: "pointer", margin: 0 }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "#fff"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "#9b9895"; }}
+            >
+              {authMode === "login" ? "Create an account" : "Already have an account? Log in"}
+            </p>
+          </form>
+        </div>
+      )}
 
-      {/* Active user display */}
-      {queriedUser && (
+      {/* Loading spinner while checking auth */}
+      {authLoading && (
+        <div style={{ textAlign: "center", padding: "8px 0" }}>
+          <div
+            className="h-5 w-5 animate-spin rounded-full border-2 mx-auto"
+            style={{ borderColor: "#3d3a37", borderTopColor: "#81b64c" }}
+          />
+        </div>
+      )}
+
+      {/* Nav + active player — only when logged in */}
+      {authUser && (
         <>
-          <div style={{ borderTop: "1px solid #3d3a37", margin: "0 16px" }} />
-          <div style={{ padding: "14px 20px" }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: "#9b9895", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-              Active Player
-            </p>
-            <p style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>
-              {queriedUser}
-            </p>
-          </div>
+          {/* Navigation */}
+          <nav style={{ padding: "8px 8px 0" }}>
+            {NAV_ITEMS.map((item) => {
+              const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-center gap-3 transition-all"
+                  style={{
+                    padding: "12px 14px",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: active ? "#fff" : "#9b9895",
+                    textDecoration: "none",
+                    borderRadius: 8,
+                    backgroundColor: active ? "#3a3733" : "transparent",
+                    marginBottom: 2,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!active) {
+                      e.currentTarget.style.backgroundColor = "#3a3733";
+                      e.currentTarget.style.color = "#fff";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!active) {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                      e.currentTarget.style.color = "#9b9895";
+                    }
+                  }}
+                >
+                  {item.icon}
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Active user display */}
+          {queriedUser && (
+            <>
+              <div style={{ borderTop: "1px solid #3d3a37", margin: "0 16px" }} />
+              <div style={{ padding: "14px 20px" }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#9b9895", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+                  Active Player
+                </p>
+                <p style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>
+                  {queriedUser}
+                </p>
+              </div>
+            </>
+          )}
         </>
       )}
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
+
+      {/* Logged-in user info — at the bottom */}
+      {authUser && (
+        <div style={{ borderTop: "1px solid #3d3a37", padding: "14px 14px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 700, color: "#9b9895", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
+                Logged in as
+              </p>
+              <p style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>{authUser}</p>
+            </div>
+            <button
+              onClick={logout}
+              style={{
+                padding: "6px 12px",
+                fontSize: 12,
+                fontWeight: 700,
+                borderRadius: 6,
+                border: "none",
+                backgroundColor: "#3d3a37",
+                color: "#9b9895",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#4a4745"; e.currentTarget.style.color = "#fff"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#3d3a37"; e.currentTarget.style.color = "#9b9895"; }}
+            >
+              Log Out
+            </button>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

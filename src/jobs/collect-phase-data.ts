@@ -1,21 +1,24 @@
 /**
- * Collect per-phase accuracy data across rating brackets.
+ * Collect per-phase accuracy data one rating bracket at a time.
  *
- * Auto-discovers real chess.com players using:
- *   1. Titled player API (GM, IM, FM, NM, CM, WGM, WIM, WFM, WNM, WCM)
- *   2. Country player lists for lower brackets (sub-1500)
+ * Discovers real chess.com players via titled player + country player APIs,
+ * imports their blitz games, evaluates with Stockfish, then computes
+ * per-phase harmonic mean accuracy.
  *
- * For each player: imports blitz games, parses, evaluates with Stockfish,
- * computes accuracy, then calculates per-phase harmonic mean accuracy.
+ * Targets 10 players / 20 games each per bracket for statistical soundness
+ * (~200 games per bracket). Appends to existing data file so you can run
+ * one bracket at a time.
  *
- * Outputs JSON: { username, rating, bracket, opening, middlegame, endgame }[]
- *
- * Usage: npx ts-node src/jobs/collect-phase-data.ts
+ * Usage:
+ *   npx ts-node src/jobs/collect-phase-data.ts 0-800
+ *   npx ts-node src/jobs/collect-phase-data.ts 800-1000
+ *   npx ts-node src/jobs/collect-phase-data.ts all          (run all brackets sequentially)
+ *   npx ts-node src/jobs/collect-phase-data.ts status        (show current data counts)
  */
 
 import { importGames } from "../services/chesscom";
 import { parseAllUnparsed } from "../services/positions";
-import { evaluateAllUnevaluated } from "../services/evaluation";
+import { evaluateGamePositions } from "../services/evaluation";
 import { computeAllAccuracy } from "../services/accuracy";
 import { StockfishEngine } from "../services/stockfish";
 import { cpToWinPercent, moveAccuracy, harmonicMean } from "../services/accuracy";
@@ -25,10 +28,12 @@ import * as path from "path";
 
 // ── Configuration ────────────────────────────────────────────────────────
 
-const GAMES_PER_PLAYER = 15;
+const GAMES_PER_PLAYER = 20;
 const EVAL_DEPTH = 12;
-const TARGET_PER_BRACKET = 3;
-const API_DELAY_MS = 600; // delay between chess.com API calls
+const TARGET_PER_BRACKET = 30;
+const API_DELAY_MS = 600;
+
+const DATA_FILE = path.join(__dirname, "../../phase-accuracy-data.json");
 
 const BRACKETS = [
   { min: 0,    max: 800,  label: "0-800" },
@@ -45,13 +50,24 @@ const BRACKETS = [
   { min: 2800, max: 9999, label: "2800+" },
 ];
 
-// Titles to query for player discovery (lower titles help fill lower brackets)
-const TITLES = ["GM", "IM", "FM", "NM", "CM", "WGM", "WIM", "WFM", "WNM", "WCM"];
-const SAMPLES_PER_TITLE = 30;
+// Title lists ordered so lower-rated titles come first (better for filling low brackets)
+// and higher-rated titles come later. We'll query all but stop early once the target bracket is full.
+const TITLE_SOURCES: { title: string; sampleSize: number }[] = [
+  { title: "WCM", sampleSize: 80 },
+  { title: "WNM", sampleSize: 30 },
+  { title: "WFM", sampleSize: 80 },
+  { title: "CM",  sampleSize: 80 },
+  { title: "NM",  sampleSize: 80 },
+  { title: "WIM", sampleSize: 60 },
+  { title: "FM",  sampleSize: 80 },
+  { title: "WGM", sampleSize: 40 },
+  { title: "IM",  sampleSize: 60 },
+  { title: "GM",  sampleSize: 60 },
+];
 
-// Small countries for discovering untitled lower-rated players
-const COUNTRY_CODES = ["IS", "LU", "MT", "CY", "LI"];
-const SAMPLES_PER_COUNTRY = 40;
+// Countries for discovering untitled low-rated players
+const COUNTRY_CODES = ["IS", "LU", "MT", "CY", "LI", "EE", "LV", "HR", "SI", "SK"];
+const SAMPLES_PER_COUNTRY = 60;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -68,13 +84,6 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function getBracketLabel(rating: number): string | null {
-  for (const b of BRACKETS) {
-    if (rating >= b.min && rating < b.max) return b.label;
-  }
-  return null;
-}
-
 interface PhaseDataPoint {
   username: string;
   rating: number;
@@ -84,15 +93,26 @@ interface PhaseDataPoint {
   endgame: number | null;
 }
 
-// ── Chess.com API wrappers with rate limiting ────────────────────────────
+function loadExistingData(): PhaseDataPoint[] {
+  if (fs.existsSync(DATA_FILE)) {
+    return JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+  }
+  return [];
+}
+
+function saveData(data: PhaseDataPoint[]): void {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+// ── Chess.com API wrappers ──────────────────────────────────────────────
 
 async function apiFetch(url: string): Promise<any | null> {
   await delay(API_DELAY_MS);
   try {
     const res = await fetch(url);
     if (res.status === 429) {
-      console.log("  Rate limited, waiting 10s...");
-      await delay(10000);
+      console.log("  Rate limited, waiting 15s...");
+      await delay(15000);
       const retry = await fetch(url);
       if (!retry.ok) return null;
       return retry.json();
@@ -138,11 +158,12 @@ async function computePhaseAccuracyForUser(username: string): Promise<{
   opening: number | null;
   middlegame: number | null;
   endgame: number | null;
+  gameCount: number;
 }> {
   const user = await prisma.user.findUnique({
     where: { username: username.toLowerCase() },
   });
-  if (!user) return { opening: null, middlegame: null, endgame: null };
+  if (!user) return { opening: null, middlegame: null, endgame: null, gameCount: 0 };
 
   const games = await prisma.game.findMany({
     where: { userId: user.id },
@@ -154,6 +175,8 @@ async function computePhaseAccuracyForUser(username: string): Promise<{
     middlegame: [],
     endgame: [],
   };
+
+  let gamesWithData = 0;
 
   for (const game of games) {
     const whiteMatch = game.pgn.match(/\[White "([^"]+)"\]/);
@@ -168,6 +191,7 @@ async function computePhaseAccuracyForUser(username: string): Promise<{
     });
 
     if (positions.length < 2) continue;
+    gamesWithData++;
 
     const phaseAccs: Record<"opening" | "middlegame" | "endgame", number[]> = {
       opening: [],
@@ -212,18 +236,19 @@ async function computePhaseAccuracyForUser(username: string): Promise<{
     endgame: phaseGameAccuracies.endgame.length > 0
       ? phaseGameAccuracies.endgame.reduce((a, b) => a + b, 0) / phaseGameAccuracies.endgame.length
       : null,
+    gameCount: gamesWithData,
   };
 }
 
-// ── Player Discovery ────────────────────────────────────────────────────
+// ── Player Discovery (for a single target bracket) ──────────────────────
 
-async function discoverPlayers(): Promise<Map<string, string[]>> {
-  const bracketPlayers = new Map<string, string[]>();
-  for (const b of BRACKETS) bracketPlayers.set(b.label, []);
+async function discoverPlayersForBracket(
+  targetBracket: { min: number; max: number; label: string },
+  existingUsernames: Set<string>,
+): Promise<string[]> {
+  const found: string[] = [];
+  const seen = new Set<string>(existingUsernames);
 
-  const seen = new Set<string>();
-
-  // Helper: check a username, assign to bracket if it fits and has room
   async function tryPlayer(username: string): Promise<boolean> {
     const key = username.toLowerCase();
     if (seen.has(key)) return false;
@@ -231,170 +256,346 @@ async function discoverPlayers(): Promise<Map<string, string[]>> {
 
     const rating = await fetchBlitzRating(username);
     if (rating == null) return false;
+    if (rating < targetBracket.min || rating >= targetBracket.max) return false;
 
-    const label = getBracketLabel(rating);
-    if (label == null) return false;
-
-    const bucket = bracketPlayers.get(label)!;
-    if (bucket.length >= TARGET_PER_BRACKET) return false;
-
-    bucket.push(username);
-    console.log(`  Found: ${username} (${rating}) → ${label} [${bucket.length}/${TARGET_PER_BRACKET}]`);
+    found.push(username);
+    console.log(`  Found: ${username} (${rating}) [${found.length}/${TARGET_PER_BRACKET}]`);
     return true;
   }
 
-  function allBracketsFull(): boolean {
-    for (const b of BRACKETS) {
-      if (bracketPlayers.get(b.label)!.length < TARGET_PER_BRACKET) return false;
-    }
-    return true;
-  }
+  // For brackets under 1600, prioritize country lists (untitled players)
+  // For brackets 1600+, prioritize titled players
+  const useCountriesFirst = targetBracket.max <= 1600;
 
-  // Phase 1: Titled players (covers ~1500+)
-  console.log("\n═══ Phase 1: Discovering titled players ═══\n");
-
-  for (const title of TITLES) {
-    if (allBracketsFull()) break;
-    console.log(`Fetching ${title} list...`);
-    const players = await fetchTitledPlayers(title);
-    if (players.length === 0) {
-      console.log(`  No players found for title ${title}`);
-      continue;
-    }
-    console.log(`  Got ${players.length} ${title}s, sampling ${SAMPLES_PER_TITLE}...`);
-    const sampled = shuffle(players).slice(0, SAMPLES_PER_TITLE);
-
-    for (const username of sampled) {
-      if (allBracketsFull()) break;
-      await tryPlayer(username);
-    }
-  }
-
-  // Phase 2: Country player lists (for lower brackets)
-  const lowBracketsNeeded = BRACKETS
-    .filter((b) => b.max <= 1600)
-    .filter((b) => bracketPlayers.get(b.label)!.length < TARGET_PER_BRACKET);
-
-  if (lowBracketsNeeded.length > 0) {
-    console.log(`\n═══ Phase 2: Discovering players from small countries (need ${lowBracketsNeeded.map(b => b.label).join(", ")}) ═══\n`);
-
+  if (useCountriesFirst) {
+    console.log(`\nDiscovering untitled players from country lists...`);
     for (const code of COUNTRY_CODES) {
-      if (allBracketsFull()) break;
-      console.log(`Fetching players from country ${code}...`);
+      if (found.length >= TARGET_PER_BRACKET) break;
+      console.log(`  Fetching ${code}...`);
       const players = await fetchCountryPlayers(code);
-      if (players.length === 0) {
-        console.log(`  No players found for ${code}`);
-        continue;
-      }
+      if (players.length === 0) continue;
       console.log(`  Got ${players.length} players, sampling ${SAMPLES_PER_COUNTRY}...`);
       const sampled = shuffle(players).slice(0, SAMPLES_PER_COUNTRY);
-
-      for (const username of sampled) {
-        if (allBracketsFull()) break;
-        await tryPlayer(username);
+      for (const u of sampled) {
+        if (found.length >= TARGET_PER_BRACKET) break;
+        await tryPlayer(u);
       }
     }
   }
 
-  // Summary
-  console.log("\n═══ Discovery Summary ═══\n");
-  let totalPlayers = 0;
-  for (const b of BRACKETS) {
-    const count = bracketPlayers.get(b.label)!.length;
-    totalPlayers += count;
-    const status = count >= TARGET_PER_BRACKET ? "FULL" : count > 0 ? `${count}/${TARGET_PER_BRACKET}` : "EMPTY";
-    console.log(`  ${b.label.padEnd(10)} ${status.padEnd(6)} ${bracketPlayers.get(b.label)!.join(", ")}`);
+  // Titled player discovery
+  if (found.length < TARGET_PER_BRACKET) {
+    console.log(`\nDiscovering from titled player lists...`);
+    for (const { title, sampleSize } of TITLE_SOURCES) {
+      if (found.length >= TARGET_PER_BRACKET) break;
+      console.log(`  Fetching ${title}s...`);
+      const players = await fetchTitledPlayers(title);
+      if (players.length === 0) continue;
+      console.log(`  Got ${players.length}, sampling ${sampleSize}...`);
+      const sampled = shuffle(players).slice(0, sampleSize);
+      for (const u of sampled) {
+        if (found.length >= TARGET_PER_BRACKET) break;
+        await tryPlayer(u);
+      }
+    }
   }
-  console.log(`\nTotal: ${totalPlayers} players discovered`);
 
-  return bracketPlayers;
+  // For high brackets, also try country lists if still short
+  if (!useCountriesFirst && found.length < TARGET_PER_BRACKET) {
+    console.log(`\nSupplementing from country player lists...`);
+    for (const code of COUNTRY_CODES) {
+      if (found.length >= TARGET_PER_BRACKET) break;
+      const players = await fetchCountryPlayers(code);
+      if (players.length === 0) continue;
+      const sampled = shuffle(players).slice(0, SAMPLES_PER_COUNTRY);
+      for (const u of sampled) {
+        if (found.length >= TARGET_PER_BRACKET) break;
+        await tryPlayer(u);
+      }
+    }
+  }
+
+  return found;
+}
+
+// ── Process a single player ─────────────────────────────────────────────
+
+async function processPlayer(
+  engine: StockfishEngine,
+  username: string,
+  bracketLabel: string,
+): Promise<PhaseDataPoint | null> {
+  // Get rating
+  const rating = await fetchBlitzRating(username);
+  if (rating == null) {
+    console.log(`  Skipping: no blitz rating`);
+    return null;
+  }
+  console.log(`  Rating: ${rating}`);
+
+  // Import games
+  const imported = await importGames(username, "blitz", true, GAMES_PER_PLAYER);
+  console.log(`  Imported: ${imported} new games`);
+
+  // Parse positions
+  const parsed = await parseAllUnparsed();
+  console.log(`  Parsed: ${parsed} games`);
+
+  // Evaluate only this user's games (not the entire DB backlog)
+  const user = await prisma.user.findUnique({
+    where: { username: username.toLowerCase() },
+  });
+  if (user) {
+    const unevaluatedGames = await prisma.game.findMany({
+      where: {
+        userId: user.id,
+        positionsParsed: true,
+        positions: { some: { eval: null } },
+      },
+      select: { id: true },
+    });
+    let evalCount = 0;
+    for (const { id } of unevaluatedGames) {
+      try {
+        const count = await evaluateGamePositions(engine, id, EVAL_DEPTH);
+        if (count > 0) evalCount++;
+      } catch (err) {
+        console.error(`  Game ${id}: eval failed —`, err);
+      }
+    }
+    console.log(`  Evaluated: ${evalCount} games (depth ${EVAL_DEPTH})`);
+  }
+
+  // Compute accuracy (cpLoss) — only for games missing it
+  const accuracyComputed = await computeAllAccuracy();
+  if (accuracyComputed > 0) console.log(`  Accuracy: ${accuracyComputed} games`);
+
+  // Compute phase accuracies
+  const phaseAcc = await computePhaseAccuracyForUser(username);
+  console.log(`  Phase accuracy: OPN=${phaseAcc.opening?.toFixed(1) ?? "—"} MID=${phaseAcc.middlegame?.toFixed(1) ?? "—"} END=${phaseAcc.endgame?.toFixed(1) ?? "—"} (${phaseAcc.gameCount} games)`);
+
+  if (phaseAcc.opening == null && phaseAcc.middlegame == null && phaseAcc.endgame == null) {
+    return null;
+  }
+
+  return {
+    username,
+    rating,
+    bracket: bracketLabel,
+    opening: phaseAcc.opening,
+    middlegame: phaseAcc.middlegame,
+    endgame: phaseAcc.endgame,
+  };
+}
+
+// ── Harvest existing DB players (no Stockfish needed) ────────────────────
+
+async function harvestExistingPlayers(): Promise<number> {
+  console.log("\n═══ Harvesting phase accuracy from existing DB players ═══\n");
+
+  const allData = loadExistingData();
+  const existingUsernames = new Set(allData.map((d) => d.username.toLowerCase()));
+
+  // Find all users with at least 5 evaluated games
+  const users = await prisma.user.findMany({
+    select: { id: true, username: true },
+  });
+
+  let added = 0;
+
+  for (const user of users) {
+    if (existingUsernames.has(user.username.toLowerCase())) {
+      console.log(`  ${user.username}: already in data file, skipping`);
+      continue;
+    }
+
+    // Count evaluated games
+    const evalGameCount = await prisma.game.count({
+      where: { userId: user.id, positions: { some: { eval: { not: null } } } },
+    });
+
+    if (evalGameCount < 5) {
+      console.log(`  ${user.username}: only ${evalGameCount} evaluated games, skipping (need 5+)`);
+      continue;
+    }
+
+    // Fetch blitz rating from chess.com
+    const rating = await fetchBlitzRating(user.username);
+    if (rating == null) {
+      console.log(`  ${user.username}: no blitz rating on chess.com, skipping`);
+      continue;
+    }
+
+    const bracket = BRACKETS.find((b) => rating >= b.min && rating < b.max);
+    if (!bracket) {
+      console.log(`  ${user.username}: rating ${rating} doesn't fit any bracket, skipping`);
+      continue;
+    }
+
+    // Compute phase accuracy (fast — just DB reads, no Stockfish)
+    const phaseAcc = await computePhaseAccuracyForUser(user.username);
+
+    if (phaseAcc.opening == null && phaseAcc.middlegame == null && phaseAcc.endgame == null) {
+      console.log(`  ${user.username}: no phase accuracy data, skipping`);
+      continue;
+    }
+
+    const point: PhaseDataPoint = {
+      username: user.username,
+      rating,
+      bracket: bracket.label,
+      opening: phaseAcc.opening,
+      middlegame: phaseAcc.middlegame,
+      endgame: phaseAcc.endgame,
+    };
+
+    // Append immediately
+    const currentData = loadExistingData();
+    currentData.push(point);
+    saveData(currentData);
+    added++;
+
+    console.log(`  ${user.username}: rating ${rating} → ${bracket.label} | OPN=${phaseAcc.opening?.toFixed(1) ?? "—"} MID=${phaseAcc.middlegame?.toFixed(1) ?? "—"} END=${phaseAcc.endgame?.toFixed(1) ?? "—"} (${phaseAcc.gameCount} games)`);
+  }
+
+  console.log(`\nHarvested ${added} new data points from existing DB players.`);
+  return added;
+}
+
+// ── Status command ──────────────────────────────────────────────────────
+
+function showStatus(): void {
+  const data = loadExistingData();
+  console.log(`\nPhase Accuracy Data — ${data.length} total data points\n`);
+
+  for (const b of BRACKETS) {
+    const points = data.filter((d) => d.bracket === b.label);
+    const opn = points.filter((d) => d.opening != null);
+    const mid = points.filter((d) => d.middlegame != null);
+    const end = points.filter((d) => d.endgame != null);
+
+    const avgOpn = opn.length > 0 ? (opn.reduce((s, d) => s + d.opening!, 0) / opn.length).toFixed(1) : "—";
+    const avgMid = mid.length > 0 ? (mid.reduce((s, d) => s + d.middlegame!, 0) / mid.length).toFixed(1) : "—";
+    const avgEnd = end.length > 0 ? (end.reduce((s, d) => s + d.endgame!, 0) / end.length).toFixed(1) : "—";
+
+    const status = points.length >= TARGET_PER_BRACKET ? "DONE" : `${points.length}/${TARGET_PER_BRACKET}`;
+    console.log(`  ${b.label.padEnd(10)} ${status.padEnd(7)} OPN=${avgOpn.toString().padEnd(5)} MID=${avgMid.toString().padEnd(5)} END=${avgEnd.toString().padEnd(5)}  (n=${points.length})`);
+  }
+
+  const complete = BRACKETS.filter((b) => data.filter((d) => d.bracket === b.label).length >= TARGET_PER_BRACKET).length;
+  console.log(`\n${complete}/${BRACKETS.length} brackets complete`);
 }
 
 // ── Main ────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log("Phase Accuracy Data Collection");
-  console.log("==============================\n");
+  const arg = process.argv[2];
 
-  // Step 1: Discover players
-  const bracketPlayers = await discoverPlayers();
+  if (!arg) {
+    console.log("Usage:");
+    console.log("  npx ts-node src/jobs/collect-phase-data.ts <bracket>   Run one bracket");
+    console.log("  npx ts-node src/jobs/collect-phase-data.ts all         Run all brackets");
+    console.log("  npx ts-node src/jobs/collect-phase-data.ts status      Show current data");
+    console.log("  npx ts-node src/jobs/collect-phase-data.ts harvest     Harvest existing DB players");
+    console.log("\nBrackets:", BRACKETS.map((b) => b.label).join(", "));
+    await prisma.$disconnect();
+    return;
+  }
 
-  // Step 2: Process each player through the pipeline
-  console.log("\n═══ Processing Players ═══\n");
+  if (arg === "status") {
+    showStatus();
+    await prisma.$disconnect();
+    return;
+  }
+
+  if (arg === "harvest") {
+    await harvestExistingPlayers();
+    showStatus();
+    await prisma.$disconnect();
+    return;
+  }
+
+  // Determine which brackets to run
+  const bracketsToRun = arg === "all"
+    ? BRACKETS
+    : BRACKETS.filter((b) => b.label === arg);
+
+  if (bracketsToRun.length === 0) {
+    console.error(`Unknown bracket: "${arg}"`);
+    console.log("Available:", BRACKETS.map((b) => b.label).join(", "));
+    await prisma.$disconnect();
+    return;
+  }
 
   const engine = new StockfishEngine();
   await engine.init();
   console.log("Stockfish initialized\n");
 
-  const results: PhaseDataPoint[] = [];
-  let playerNum = 0;
-  let totalPlayers = 0;
-  for (const b of BRACKETS) totalPlayers += bracketPlayers.get(b.label)!.length;
+  for (const bracket of bracketsToRun) {
+    console.log(`\n${"═".repeat(50)}`);
+    console.log(`  Bracket: ${bracket.label} (target: ${TARGET_PER_BRACKET} players)`);
+    console.log(`${"═".repeat(50)}`);
 
-  for (const bracket of BRACKETS) {
-    const players = bracketPlayers.get(bracket.label)!;
-    if (players.length === 0) continue;
+    // Load existing data and see how many we already have for this bracket
+    const allData = loadExistingData();
+    const existingForBracket = allData.filter((d) => d.bracket === bracket.label);
+    const existingUsernames = new Set(allData.map((d) => d.username.toLowerCase()));
+    const needed = TARGET_PER_BRACKET - existingForBracket.length;
 
-    console.log(`\n── Bracket: ${bracket.label} (${players.length} players) ──`);
+    if (needed <= 0) {
+      console.log(`\nAlready have ${existingForBracket.length} players — skipping.`);
+      continue;
+    }
+    console.log(`\nHave ${existingForBracket.length}, need ${needed} more players.`);
 
-    for (const username of players) {
-      playerNum++;
-      console.log(`\n[${playerNum}/${totalPlayers}] Processing ${username}...`);
+    // Discover players
+    const players = await discoverPlayersForBracket(bracket, existingUsernames);
+    const toProcess = players.slice(0, needed);
+
+    if (toProcess.length === 0) {
+      console.log(`\nCould not find enough players for ${bracket.label}.`);
+      continue;
+    }
+
+    console.log(`\nProcessing ${toProcess.length} players...\n`);
+
+    // Process each player
+    for (let i = 0; i < toProcess.length; i++) {
+      const username = toProcess[i];
+      console.log(`\n[${i + 1}/${toProcess.length}] ${username}`);
 
       try {
-        // Get rating
-        const rating = await fetchBlitzRating(username);
-        if (rating == null) {
-          console.log(`  Skipping: no blitz rating`);
-          continue;
-        }
-        console.log(`  Rating: ${rating}`);
-
-        // Import games
-        const imported = await importGames(username, "blitz", true, GAMES_PER_PLAYER);
-        console.log(`  Imported: ${imported} new games`);
-
-        // Parse positions
-        const parsed = await parseAllUnparsed();
-        console.log(`  Parsed: ${parsed} games`);
-
-        // Evaluate with Stockfish
-        const evaluated = await evaluateAllUnevaluated(engine, EVAL_DEPTH);
-        console.log(`  Evaluated: ${evaluated} games (depth ${EVAL_DEPTH})`);
-
-        // Compute accuracy (cpLoss)
-        const accuracyComputed = await computeAllAccuracy();
-        console.log(`  Accuracy: ${accuracyComputed} games`);
-
-        // Compute phase accuracies
-        const phaseAcc = await computePhaseAccuracyForUser(username);
-        console.log(`  Phase accuracy: OPN=${phaseAcc.opening?.toFixed(1) ?? "—"} MID=${phaseAcc.middlegame?.toFixed(1) ?? "—"} END=${phaseAcc.endgame?.toFixed(1) ?? "—"}`);
-
-        if (phaseAcc.opening != null || phaseAcc.middlegame != null || phaseAcc.endgame != null) {
-          results.push({
-            username,
-            rating,
-            bracket: bracket.label,
-            ...phaseAcc,
-          });
-
-          // Save intermediate results after each player
-          const outPath = path.join(__dirname, "../../phase-accuracy-data.json");
-          fs.writeFileSync(outPath, JSON.stringify(results, null, 2));
+        const result = await processPlayer(engine, username, bracket.label);
+        if (result) {
+          // Append to data file immediately
+          const currentData = loadExistingData();
+          currentData.push(result);
+          saveData(currentData);
+          console.log(`  Saved. Total: ${currentData.filter((d) => d.bracket === bracket.label).length}/${TARGET_PER_BRACKET} for ${bracket.label}`);
         }
       } catch (err) {
         console.error(`  Error processing ${username}:`, err);
       }
     }
+
+    // Show bracket summary
+    const finalData = loadExistingData();
+    const bracketData = finalData.filter((d) => d.bracket === bracket.label);
+    const opn = bracketData.filter((d) => d.opening != null);
+    const mid = bracketData.filter((d) => d.middlegame != null);
+    const end = bracketData.filter((d) => d.endgame != null);
+    console.log(`\n── ${bracket.label} Summary ──`);
+    console.log(`  Players: ${bracketData.length}`);
+    console.log(`  Opening:    ${opn.length > 0 ? (opn.reduce((s, d) => s + d.opening!, 0) / opn.length).toFixed(1) + "%" : "—"} (n=${opn.length})`);
+    console.log(`  Middlegame: ${mid.length > 0 ? (mid.reduce((s, d) => s + d.middlegame!, 0) / mid.length).toFixed(1) + "%" : "—"} (n=${mid.length})`);
+    console.log(`  Endgame:    ${end.length > 0 ? (end.reduce((s, d) => s + d.endgame!, 0) / end.length).toFixed(1) + "%" : "—"} (n=${end.length})`);
   }
 
   engine.shutdown();
 
-  // Final save
-  const outPath = path.join(__dirname, "../../phase-accuracy-data.json");
-  fs.writeFileSync(outPath, JSON.stringify(results, null, 2));
-  console.log(`\n══════════════════════════════`);
-  console.log(`Done! Wrote ${results.length} data points to ${outPath}`);
+  // Final status
+  console.log("\n");
+  showStatus();
 
   await prisma.$disconnect();
 }

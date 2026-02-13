@@ -12,7 +12,7 @@ export function moveAccuracy(winBefore: number, winAfter: number): number {
   return Math.max(0, Math.min(100, raw));
 }
 
-function stddev(values: number[]): number {
+export function stddev(values: number[]): number {
   if (values.length < 2) return 0;
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const variance =
@@ -20,7 +20,7 @@ function stddev(values: number[]): number {
   return Math.sqrt(variance);
 }
 
-function harmonicMean(values: number[]): number {
+export function harmonicMean(values: number[]): number {
   if (values.length === 0) return 0;
   // Shift values slightly above zero to avoid division by zero
   const safe = values.map((v) => Math.max(v, 0.001));
