@@ -87,22 +87,71 @@ export default function Home() {
   const [targetRating, setTargetRating] = useState<number | null>(null);
   const [targetStats, setTargetStats] = useState<TargetStatsData | null>(null);
   const targetDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showProgress, setShowProgress] = useState(false);
+  const loadStartRef = useRef<number>(0);
+  const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const lastTriggerRef = useRef(0);
+
+  // ── Cache helpers ──
+  const CACHE_KEY = (user: string) => `arena_cache_${user.toLowerCase()}`;
+  const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+  function saveToCache(user: string, data: { cards: CardData[]; stats: StatsData; profile: ProfileData; games: GameData[] }) {
+    try {
+      localStorage.setItem(CACHE_KEY(user), JSON.stringify({ ...data, timestamp: Date.now() }));
+    } catch { /* quota exceeded etc */ }
+  }
+
+  function loadFromCache(user: string): { cards: CardData[]; stats: StatsData; profile: ProfileData; games: GameData[]; timestamp: number } | null {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY(user));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (Date.now() - parsed.timestamp > CACHE_TTL) {
+        localStorage.removeItem(CACHE_KEY(user));
+        return null;
+      }
+      return parsed;
+    } catch { return null; }
+  }
 
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (!queriedUser || searchTrigger === lastTriggerRef.current) return;
     lastTriggerRef.current = searchTrigger;
-    fetchStats(queriedUser);
+    const cached = loadFromCache(queriedUser);
+    if (cached) {
+      setCards(cached.cards);
+      setStats(cached.stats);
+      setProfile(cached.profile);
+      setGames(cached.games);
+      setActiveIndex(0);
+      setLoading(false);
+      // Refresh in background
+      fetchStats(queriedUser, true);
+    } else {
+      fetchStats(queriedUser);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTrigger]);
 
   // Auto-fetch on mount if queriedUser is already set (tab switch)
   useEffect(() => {
     if (queriedUser && !stats && !loading) {
-      fetchStats(queriedUser);
+      const cached = loadFromCache(queriedUser);
+      if (cached) {
+        setCards(cached.cards);
+        setStats(cached.stats);
+        setProfile(cached.profile);
+        setGames(cached.games);
+        setActiveIndex(0);
+        // Refresh in background
+        fetchStats(queriedUser, true);
+      } else {
+        fetchStats(queriedUser);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -114,18 +163,35 @@ export default function Home() {
     if (queriedUser || stats || loading) return;
     autoLoadFired.current = true;
     setQueriedUser(authUser);
-    fetchStats(authUser);
+    const cached = loadFromCache(authUser);
+    if (cached) {
+      setCards(cached.cards);
+      setStats(cached.stats);
+      setProfile(cached.profile);
+      setGames(cached.games);
+      setActiveIndex(0);
+      // Refresh in background
+      fetchStats(authUser, true);
+    } else {
+      fetchStats(authUser);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser, authLoading, queriedUser, stats, loading]);
 
-  async function fetchStats(user: string) {
-    setLoading(true);
-    setError("");
-    setStats(null);
-    setGames([]);
-    setProfile(null);
-    setCards([]);
-    setStatusMsg("Importing games from chess.com...");
+  async function fetchStats(user: string, background = false) {
+    if (!background) {
+      setLoading(true);
+      setError("");
+      setStats(null);
+      setGames([]);
+      setProfile(null);
+      setCards([]);
+      setStatusMsg("Importing games from chess.com...");
+      setShowProgress(false);
+      loadStartRef.current = Date.now();
+      if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
+      progressTimerRef.current = setTimeout(() => setShowProgress(true), 5000);
+    }
 
     try {
       // Step 1: Import rated games for all time controls in parallel (always import up to 100)
@@ -145,7 +211,7 @@ export default function Home() {
       }
 
       // Step 2: Fetch chess.com profile + ratings in parallel
-      setStatusMsg("Fetching player profile...");
+      if (!background) setStatusMsg("Fetching player profile...");
       let profileData: ProfileData = {};
       let ratings: Record<string, number> = {};
       let peakRatings: Record<string, number> = {};
@@ -197,7 +263,7 @@ export default function Home() {
 
       // Step 3: For each time control with a rating, fetch arena stats (rated only)
       const cardTimeControls = TIME_CONTROLS.filter((tc) => ratings[tc]);
-      setStatusMsg("Building arena cards...");
+      if (!background) setStatusMsg("Building arena cards...");
 
       if (cardTimeControls.length > 0) {
         const arenaPromises = cardTimeControls.map(async (tc) => {
@@ -230,12 +296,12 @@ export default function Home() {
           .filter((c): c is CardData => c !== null)
           .sort((a, b) => b.chessRating - a.chessRating);
         setCards(sorted);
-        setActiveIndex(0);
+        if (!background) setActiveIndex(0);
       }
 
       // Step 4: Fetch stats + games — use highest-rated time control, rated only
       const defaultTC = cardTimeControls.length > 0 ? cardTimeControls[0] : "blitz";
-      setStatusMsg("Fetching stats...");
+      if (!background) setStatusMsg("Fetching stats...");
       const statsParams = new URLSearchParams();
       statsParams.set("timeCategory", defaultTC);
       statsParams.set("rated", "true");
@@ -254,15 +320,29 @@ export default function Home() {
       const gamesParams = new URLSearchParams({ limit: String(gameLimit), timeCategory: defaultTC, rated: "true" });
       const gamesUrl = `${API_BASE}/users/${encodeURIComponent(user)}/games?${gamesParams}`;
       const gamesRes = await fetch(gamesUrl);
+      let gamesData: GameData[] = [];
       if (gamesRes.ok) {
-        const gamesData = await gamesRes.json();
-        setGames(gamesData.games);
+        const gd = await gamesRes.json();
+        gamesData = gd.games;
+        setGames(gamesData);
       }
+
+      // Save to cache — use setCards callback to read current cards from state
+      setCards((currentCards) => {
+        if (currentCards.length > 0) {
+          saveToCache(user, { cards: currentCards, stats: data, profile: profileData, games: gamesData });
+        }
+        return currentCards;
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      if (!background) setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
-      setLoading(false);
-      setStatusMsg("");
+      if (!background) {
+        setLoading(false);
+        setStatusMsg("");
+        setShowProgress(false);
+        if (progressTimerRef.current) { clearTimeout(progressTimerRef.current); progressTimerRef.current = null; }
+      }
     }
   }
 
@@ -393,6 +473,49 @@ export default function Home() {
             {statusMsg && (
               <p className="text-sm font-bold" style={{ color: "#d1cfcc" }}>{statusMsg}</p>
             )}
+            {showProgress && (() => {
+              const STEPS: { msg: string; pct: number }[] = [
+                { msg: "Importing games from chess.com...", pct: 15 },
+                { msg: "Fetching player profile...", pct: 40 },
+                { msg: "Building arena cards...", pct: 65 },
+                { msg: "Fetching stats...", pct: 85 },
+              ];
+              const currentStep = STEPS.findIndex((s) => s.msg === statusMsg);
+              const basePct = currentStep >= 0 ? STEPS[currentStep].pct : 10;
+              const nextPct = currentStep >= 0 && currentStep < STEPS.length - 1 ? STEPS[currentStep + 1].pct : 95;
+              // Slowly animate within the current step
+              const elapsed = (Date.now() - loadStartRef.current) / 1000;
+              const stepProgress = Math.min(0.8, (elapsed % 15) / 15);
+              const pct = Math.min(95, basePct + (nextPct - basePct) * stepProgress);
+
+              return (
+                <div style={{ width: 280, marginTop: 8 }}>
+                  <div style={{
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: "#1c1b19",
+                    overflow: "hidden",
+                  }}>
+                    <div style={{
+                      height: "100%",
+                      width: `${pct}%`,
+                      borderRadius: 2,
+                      backgroundColor: "#81b64c",
+                      transition: "width 1s ease",
+                    }} />
+                  </div>
+                  <p style={{
+                    textAlign: "center",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "#6b6966",
+                    marginTop: 6,
+                  }}>
+                    This may take a moment on first load
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         )}
 
