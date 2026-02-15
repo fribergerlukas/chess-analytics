@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import PlayerCard, { Arena GameStatsData } from "../PlayerCard";
+import PlayerCard, { ArenaStatsData } from "../PlayerCard";
 import { useAuth } from "../AuthContext";
 import SimulationGame from "./SimulationGame";
 
@@ -15,7 +15,7 @@ interface CardData {
   timeControl: "bullet" | "blitz" | "rapid";
   chessRating: number;
   peakRating?: number;
-  arenaStats: Arena GameStatsData;
+  arenaStats: ArenaStatsData;
 }
 
 const API_BASE = "http://localhost:3000";
@@ -139,7 +139,7 @@ export default function BeatYourFriends() {
               `${API_BASE}/users/${encodeURIComponent(user)}/arena-stats?${params}`
             );
             if (!res.ok) return null;
-            const arenaStats: Arena GameStatsData = await res.json();
+            const arenaStats: ArenaStatsData = await res.json();
             if (records[tc]) arenaStats.record = records[tc];
             return { timeControl: tc, chessRating: ratings[tc], peakRating: peakRatings[tc], arenaStats } as CardData;
           } catch {
@@ -234,7 +234,7 @@ export default function BeatYourFriends() {
               `${API_BASE}/users/${encodeURIComponent(user)}/arena-stats?${params}`
             );
             if (!res.ok) return null;
-            const arenaStats: Arena GameStatsData = await res.json();
+            const arenaStats: ArenaStatsData = await res.json();
             if (records[tc]) arenaStats.record = records[tc];
             return { timeControl: tc, chessRating: ratings[tc], peakRating: peakRatings[tc], arenaStats } as CardData;
           } catch {
