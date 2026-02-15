@@ -30,7 +30,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    label: "Beat your friends",
+    label: "Arena Game",
     href: "/beat-your-friends",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

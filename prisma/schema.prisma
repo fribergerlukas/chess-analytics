@@ -75,6 +75,7 @@ model Position {
   puzzles        Puzzle[]
 
   @@index([gameId])
+  @@index([fen, gameId])
 }
 
 model Puzzle {

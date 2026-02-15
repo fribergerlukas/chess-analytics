@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import PlayerCard, { ArenaStatsData } from "../PlayerCard";
+import PlayerCard, { Arena GameStatsData } from "../PlayerCard";
 import { useAuth } from "../AuthContext";
+import SimulationGame from "./SimulationGame";
 
 interface ProfileData {
   title?: string;
@@ -14,7 +15,7 @@ interface CardData {
   timeControl: "bullet" | "blitz" | "rapid";
   chessRating: number;
   peakRating?: number;
-  arenaStats: ArenaStatsData;
+  arenaStats: Arena GameStatsData;
 }
 
 const API_BASE = "http://localhost:3000";
@@ -36,9 +37,13 @@ export default function BeatYourFriends() {
   const [compareUsername, setCompareUsername] = useState("");
   const [compareCards, setCompareCards] = useState<CardData[]>([]);
   const [compareProfile, setCompareProfile] = useState<ProfileData | null>(null);
-  const [compareActiveIndex, setCompareActiveIndex] = useState(0);
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareUser, setCompareUser] = useState("");
+
+  // Simulation game
+  const [simGameOpen, setSimGameOpen] = useState(false);
+  const [simSidePicker, setSimSidePicker] = useState(false);
+  const [simUserSide, setSimUserSide] = useState<"white" | "black">("white");
 
   // Auto-load own cards on mount
   const autoLoadFired = useRef(false);
@@ -134,7 +139,7 @@ export default function BeatYourFriends() {
               `${API_BASE}/users/${encodeURIComponent(user)}/arena-stats?${params}`
             );
             if (!res.ok) return null;
-            const arenaStats: ArenaStatsData = await res.json();
+            const arenaStats: Arena GameStatsData = await res.json();
             if (records[tc]) arenaStats.record = records[tc];
             return { timeControl: tc, chessRating: ratings[tc], peakRating: peakRatings[tc], arenaStats } as CardData;
           } catch {
@@ -229,7 +234,7 @@ export default function BeatYourFriends() {
               `${API_BASE}/users/${encodeURIComponent(user)}/arena-stats?${params}`
             );
             if (!res.ok) return null;
-            const arenaStats: ArenaStatsData = await res.json();
+            const arenaStats: Arena GameStatsData = await res.json();
             if (records[tc]) arenaStats.record = records[tc];
             return { timeControl: tc, chessRating: ratings[tc], peakRating: peakRatings[tc], arenaStats } as CardData;
           } catch {
@@ -246,7 +251,7 @@ export default function BeatYourFriends() {
           return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
         });
         setCompareCards(sorted);
-        setCompareActiveIndex(0);
+
       }
     } catch {
       // Non-critical
@@ -261,7 +266,7 @@ export default function BeatYourFriends() {
       <main className="mx-auto max-w-5xl px-6 py-10 space-y-8">
         {/* Heading */}
         <h1 className="text-center font-extrabold" style={{ fontSize: 28, color: "#fff" }}>
-          Beat your friends
+          Arena Game
         </h1>
 
         {/* Loading state */}
@@ -287,116 +292,73 @@ export default function BeatYourFriends() {
           </div>
         )}
 
+        {/* Simulation Game (full-screen takeover) */}
+        {simGameOpen && compareCards.length > 0 && (() => {
+          const simTc = cards[activeIndex]?.timeControl || "blitz";
+          const simCompareCard = compareCards.find((c) => c.timeControl === simTc);
+          return (
+            <SimulationGame
+              opponentUsername={compareUser}
+              opponentRating={simCompareCard?.chessRating}
+              opponentSide={simUserSide === "white" ? "black" : "white"}
+              opponentProfile={compareProfile || undefined}
+              timeCategory={simTc}
+              onClose={() => setSimGameOpen(false)}
+            />
+          );
+        })()}
+
         {/* Cards row — Your Card + Compare Card */}
-        {cards.length > 0 && !loading && (
+        {cards.length > 0 && !loading && !simGameOpen && (() => {
+          // Time control tabs derived from the user's available cards
+          const timeControls = cards.map((c) => c.timeControl);
+          // Find the compare card matching the current time control
+          const currentTc = cards[activeIndex]?.timeControl;
+          const matchingCompareCard = compareCards.find((c) => c.timeControl === currentTc);
+
+          return (
           <>
+            {/* Time control tabs */}
+            {timeControls.length > 1 && (
+              <div className="flex justify-center gap-2">
+                {timeControls.map((tc, i) => (
+                  <button
+                    key={tc}
+                    onClick={() => setActiveIndex(i)}
+                    style={{
+                      padding: "8px 24px",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      borderRadius: 8,
+                      border: "none",
+                      backgroundColor: activeIndex === i ? "#4a4745" : "transparent",
+                      color: activeIndex === i ? "#fff" : "#9b9895",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                      textTransform: "capitalize",
+                    }}
+                    onMouseEnter={(e) => { if (activeIndex !== i) { e.currentTarget.style.backgroundColor = "#3d3a37"; e.currentTarget.style.color = "#fff"; } }}
+                    onMouseLeave={(e) => { if (activeIndex !== i) { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#9b9895"; } }}
+                  >
+                    {tc}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="flex justify-center items-center gap-10">
-              {/* ── Your card carousel ── */}
-              <div className="flex items-center gap-4">
-                {/* Left arrow */}
-                {cards.length > 1 && (
-                  <button
-                    onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
-                    disabled={activeIndex === 0}
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 10,
-                      backgroundColor: activeIndex === 0 ? "#3d3a37" : "#4a4745",
-                      color: activeIndex === 0 ? "#6b6966" : "#d1cfcc",
-                      border: "none",
-                      cursor: activeIndex === 0 ? "default" : "pointer",
-                      fontSize: 20,
-                      fontWeight: 700,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      transition: "all 0.2s ease",
-                      flexShrink: 0,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (activeIndex !== 0) e.currentTarget.style.backgroundColor = "#5a5755";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (activeIndex !== 0) e.currentTarget.style.backgroundColor = "#4a4745";
-                    }}
-                  >
-                    &#8249;
-                  </button>
-                )}
-
-                {/* Card stack */}
-                <div style={{ position: "relative", width: 240, height: 360 }}>
-                  {cards.map((card, i) => {
-                    const offset = i - activeIndex;
-                    if (offset < 0) return null;
-                    const zIndex = cards.length - offset;
-                    const translateX = offset * 30;
-                    const scale = 1 - offset * 0.05;
-                    const opacity = offset === 0 ? 1 : Math.max(0.4, 1 - offset * 0.3);
-
-                    return (
-                      <div
-                        key={card.timeControl}
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          zIndex,
-                          transform: `translateX(${translateX}px) scale(${scale})`,
-                          opacity,
-                          transition: "all 0.4s ease",
-                          transformOrigin: "left center",
-                          pointerEvents: offset === 0 ? "auto" : "none",
-                        }}
-                      >
-                        <PlayerCard
-                          username={authUser || ""}
-                          timeControl={card.timeControl}
-                          chessRating={card.chessRating}
-                          peakRating={card.peakRating}
-                          title={profile?.title}
-                          countryCode={profile?.countryCode}
-                          avatarUrl={profile?.avatarUrl}
-                          arenaStats={card.arenaStats}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Right arrow */}
-                {cards.length > 1 && (
-                  <button
-                    onClick={() => setActiveIndex((i) => Math.min(cards.length - 1, i + 1))}
-                    disabled={activeIndex === cards.length - 1}
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 10,
-                      backgroundColor: activeIndex === cards.length - 1 ? "#3d3a37" : "#4a4745",
-                      color: activeIndex === cards.length - 1 ? "#6b6966" : "#d1cfcc",
-                      border: "none",
-                      cursor: activeIndex === cards.length - 1 ? "default" : "pointer",
-                      fontSize: 20,
-                      fontWeight: 700,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      transition: "all 0.2s ease",
-                      flexShrink: 0,
-                      marginLeft: (cards.length - 1 - activeIndex) * 30,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (activeIndex !== cards.length - 1) e.currentTarget.style.backgroundColor = "#5a5755";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (activeIndex !== cards.length - 1) e.currentTarget.style.backgroundColor = "#4a4745";
-                    }}
-                  >
-                    &#8250;
-                  </button>
-                )}
+              {/* ── Your card ── */}
+              <div style={{ width: 240, height: 360, flexShrink: 0 }}>
+                <PlayerCard
+                  username={authUser || ""}
+                  timeControl={cards[activeIndex].timeControl}
+                  chessRating={cards[activeIndex].chessRating}
+                  peakRating={cards[activeIndex].peakRating}
+                  title={profile?.title}
+                  countryCode={profile?.countryCode}
+                  avatarUrl={profile?.avatarUrl}
+                  arenaStats={cards[activeIndex].arenaStats}
+                />
               </div>
 
               {/* ── Compare card area ── */}
@@ -512,168 +474,158 @@ export default function BeatYourFriends() {
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#9b9895" }}>Loading {compareUsername}...</span>
                 </div>
               ) : (
-                /* ── Compare player carousel ── */
-                <div className="flex items-center gap-4">
-                  {/* Left arrow */}
-                  {compareCards.length > 1 && (
-                    <button
-                      onClick={() => setCompareActiveIndex((i) => Math.max(0, i - 1))}
-                      disabled={compareActiveIndex === 0}
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 10,
-                        backgroundColor: compareActiveIndex === 0 ? "#3d3a37" : "#4a4745",
-                        color: compareActiveIndex === 0 ? "#6b6966" : "#d1cfcc",
-                        border: "none",
-                        cursor: compareActiveIndex === 0 ? "default" : "pointer",
-                        fontSize: 20,
-                        fontWeight: 700,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        transition: "all 0.2s ease",
-                        flexShrink: 0,
-                      }}
-                      onMouseEnter={(e) => {
-                        if (compareActiveIndex !== 0) e.currentTarget.style.backgroundColor = "#5a5755";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (compareActiveIndex !== 0) e.currentTarget.style.backgroundColor = "#4a4745";
-                      }}
-                    >
-                      &#8249;
-                    </button>
-                  )}
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  {/* Close button */}
+                  <button
+                    onClick={() => { setCompareCards([]); setCompareProfile(null); setCompareUser(""); setCompareUsername(""); }}
+                    style={{
+                      position: "absolute",
+                      top: -10,
+                      right: -10,
+                      width: 24,
+                      height: 24,
+                      borderRadius: "50%",
+                      backgroundColor: "#4a4745",
+                      color: "#d1cfcc",
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      zIndex: 20,
+                      lineHeight: 1,
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#e05252"; e.currentTarget.style.color = "#fff"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#4a4745"; e.currentTarget.style.color = "#d1cfcc"; }}
+                  >
+                    &#215;
+                  </button>
 
-                  <div style={{ position: "relative" }}>
-                    {/* Close button */}
-                    <button
-                      onClick={() => { setCompareCards([]); setCompareProfile(null); setCompareUser(""); setCompareUsername(""); }}
-                      style={{
-                        position: "absolute",
-                        top: -10,
-                        right: -10,
-                        width: 24,
-                        height: 24,
-                        borderRadius: "50%",
-                        backgroundColor: "#4a4745",
-                        color: "#d1cfcc",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: 14,
-                        fontWeight: 700,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        zIndex: 20,
-                        lineHeight: 1,
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#e05252"; e.currentTarget.style.color = "#fff"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#4a4745"; e.currentTarget.style.color = "#d1cfcc"; }}
-                    >
-                      &#215;
-                    </button>
-
-                    {/* Card stack */}
-                    <div style={{ position: "relative", width: 240, height: 360 }}>
-                      {compareCards.map((card, i) => {
-                        const offset = i - compareActiveIndex;
-                        if (offset < 0) return null;
-                        const zIndex = compareCards.length - offset;
-                        const translateX = offset * 30;
-                        const scale = 1 - offset * 0.05;
-                        const opacity = offset === 0 ? 1 : Math.max(0.4, 1 - offset * 0.3);
-
-                        return (
-                          <div
-                            key={card.timeControl}
-                            style={{
-                              position: "absolute",
-                              top: 0,
-                              left: 0,
-                              zIndex,
-                              transform: `translateX(${translateX}px) scale(${scale})`,
-                              opacity,
-                              transition: "all 0.4s ease",
-                              transformOrigin: "left center",
-                              pointerEvents: offset === 0 ? "auto" : "none",
-                            }}
-                          >
-                            <PlayerCard
-                              username={compareUser}
-                              timeControl={card.timeControl}
-                              chessRating={card.chessRating}
-                              peakRating={card.peakRating}
-                              title={compareProfile?.title}
-                              countryCode={compareProfile?.countryCode}
-                              avatarUrl={compareProfile?.avatarUrl}
-                              arenaStats={card.arenaStats}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
+                  <div style={{ width: 240, height: 360 }}>
+                    {matchingCompareCard ? (
+                      <PlayerCard
+                        username={compareUser}
+                        timeControl={matchingCompareCard.timeControl}
+                        chessRating={matchingCompareCard.chessRating}
+                        peakRating={matchingCompareCard.peakRating}
+                        title={compareProfile?.title}
+                        countryCode={compareProfile?.countryCode}
+                        avatarUrl={compareProfile?.avatarUrl}
+                        arenaStats={matchingCompareCard.arenaStats}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          borderRadius: 16,
+                          backgroundColor: "#2a2825",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#6b6966" }}>
+                          No {currentTc} data
+                        </span>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Right arrow */}
-                  {compareCards.length > 1 && (
-                    <button
-                      onClick={() => setCompareActiveIndex((i) => Math.min(compareCards.length - 1, i + 1))}
-                      disabled={compareActiveIndex === compareCards.length - 1}
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 10,
-                        backgroundColor: compareActiveIndex === compareCards.length - 1 ? "#3d3a37" : "#4a4745",
-                        color: compareActiveIndex === compareCards.length - 1 ? "#6b6966" : "#d1cfcc",
-                        border: "none",
-                        cursor: compareActiveIndex === compareCards.length - 1 ? "default" : "pointer",
-                        fontSize: 20,
-                        fontWeight: 700,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        transition: "all 0.2s ease",
-                        flexShrink: 0,
-                        marginLeft: (compareCards.length - 1 - compareActiveIndex) * 30,
-                      }}
-                      onMouseEnter={(e) => {
-                        if (compareActiveIndex !== compareCards.length - 1) e.currentTarget.style.backgroundColor = "#5a5755";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (compareActiveIndex !== compareCards.length - 1) e.currentTarget.style.backgroundColor = "#4a4745";
-                      }}
-                    >
-                      &#8250;
-                    </button>
-                  )}
                 </div>
               )}
             </div>
 
             {/* ── Simulation Game + Prediction ── */}
             <div className="flex flex-col items-center gap-6" style={{ marginTop: 32 }}>
-              {/* Simulation Game button */}
-              <button
-                onClick={() => {}}
-                style={{
-                  padding: "14px 48px",
-                  fontSize: 16,
-                  fontWeight: 800,
-                  borderRadius: 10,
-                  border: "none",
-                  backgroundColor: "#81b64c",
-                  color: "#fff",
-                  cursor: "pointer",
-                  transition: "all 0.2s ease",
-                  letterSpacing: "0.01em",
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#6fa33e"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#81b64c"; }}
-              >
-                Simulation Game
-              </button>
+              {/* Simulation Game button + side picker */}
+              {!simSidePicker ? (
+                <button
+                  onClick={() => {
+                    if (!compareUser || compareCards.length === 0) {
+                      setCompareOpen(true);
+                    } else {
+                      setSimSidePicker(true);
+                    }
+                  }}
+                  style={{
+                    padding: "14px 48px",
+                    fontSize: 16,
+                    fontWeight: 800,
+                    borderRadius: 10,
+                    border: "none",
+                    backgroundColor: "#81b64c",
+                    color: "#fff",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                    letterSpacing: "0.01em",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#6fa33e"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#81b64c"; }}
+                >
+                  Simulation Game
+                </button>
+              ) : (
+                <div className="flex flex-col items-center gap-3">
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#9b9895" }}>
+                    Play as
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setSimUserSide("white");
+                        setSimSidePicker(false);
+                        setSimGameOpen(true);
+                      }}
+                      style={{
+                        padding: "12px 28px",
+                        fontSize: 15,
+                        fontWeight: 800,
+                        borderRadius: 10,
+                        border: "2px solid #4a4745",
+                        backgroundColor: "#f0d9b5",
+                        color: "#312e2b",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#81b64c"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#4a4745"; }}
+                    >
+                      &#9812; White
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSimUserSide("black");
+                        setSimSidePicker(false);
+                        setSimGameOpen(true);
+                      }}
+                      style={{
+                        padding: "12px 28px",
+                        fontSize: 15,
+                        fontWeight: 800,
+                        borderRadius: 10,
+                        border: "2px solid #4a4745",
+                        backgroundColor: "#b58863",
+                        color: "#fff",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#81b64c"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#4a4745"; }}
+                    >
+                      &#9818; Black
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setSimSidePicker(false)}
+                    className="text-xs font-bold mt-1"
+                    style={{ color: "#6b6966", background: "none", border: "none", cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
 
               {/* Win / Draw / Loss prediction row */}
               <div className="grid grid-cols-3 gap-4" style={{ width: "100%", maxWidth: 480 }}>
@@ -692,13 +644,14 @@ export default function BeatYourFriends() {
               </div>
             </div>
           </>
-        )}
+          );
+        })()}
 
         {/* Empty state — not logged in */}
         {!authUser && !authLoading && !loading && (
           <div className="text-center py-24">
             <p className="font-extrabold mb-3" style={{ color: "#fff", fontSize: 22 }}>
-              Beat your friends
+              Arena Game
             </p>
             <p className="font-bold" style={{ color: "#9b9895", fontSize: 15 }}>
               Log in to compare your arena cards with friends.

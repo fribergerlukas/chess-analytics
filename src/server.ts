@@ -5,6 +5,7 @@ import importRouter from "./routes/import";
 import gamesRouter from "./routes/games";
 import puzzlesRouter from "./routes/puzzles";
 import arenaRouter from "./routes/arena";
+import simulationRouter from "./routes/simulation";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,6 +18,7 @@ app.use("/import", importRouter);
 app.use(gamesRouter);
 app.use(puzzlesRouter);
 app.use(arenaRouter);
+app.use(simulationRouter);
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err.stack);
