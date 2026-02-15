@@ -3,6 +3,7 @@ import { StockfishEngine } from "./stockfish";
 import { evaluateGamePositions } from "./evaluation";
 import { detectGameBlunders } from "./blunders";
 import { generateGamePuzzles } from "./puzzles";
+import { computeGameAccuracy } from "./accuracy";
 import { Side } from "@prisma/client";
 
 interface UserJob {
@@ -77,6 +78,9 @@ async function runEvalPipeline(userId: number, username: string, job: UserJob) {
 
       // Classify blunders
       await detectGameBlunders(game.id);
+
+      // Compute per-game accuracy from Stockfish data (works for all users, no chess.com membership needed)
+      await computeGameAccuracy(game.id);
 
       // Generate puzzles for this game immediately
       const userSide = getUserSide(game.pgn, username) ?? undefined;

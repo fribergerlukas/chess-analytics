@@ -796,9 +796,13 @@ export function computeArenaStats(
       allMoveAccs.push(acc);
 
       // Best move tracking
+      // In the opening, treat book-quality moves (cpLoss ≤ 5) as "best moves"
+      // since standard theory moves may differ from Stockfish's top pick
       if (curr.bestMoveUci) {
         phaseBestMoveTotal[phase]++;
-        if (curr.moveUci === curr.bestMoveUci) phaseBestMoveHits[phase]++;
+        const isStockfishBest = curr.moveUci === curr.bestMoveUci;
+        const isBookQuality = phase === "opening" && curr.cpLoss != null && curr.cpLoss <= 5;
+        if (isStockfishBest || isBookQuality) phaseBestMoveHits[phase]++;
       }
 
       // Blunder tracking
