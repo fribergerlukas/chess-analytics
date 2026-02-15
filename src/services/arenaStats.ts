@@ -613,6 +613,10 @@ export function computeArenaStats(
     middlegame: [],
     endgame: [],
   };
+  // Per-game overall accuracy (all phases combined, same method as phase accuracy)
+  const overallGameAccuracies: number[] = [];
+  const whiteGameAccuracies: number[] = [];
+  const blackGameAccuracies: number[] = [];
 
   // Best move rate per phase (across all games, not per-game)
   const phaseBestMoveHits: Record<"opening" | "middlegame" | "endgame", number> = {
@@ -770,6 +774,7 @@ export function computeArenaStats(
     const phaseAccs: Record<"opening" | "middlegame" | "endgame", number[]> = {
       opening: [], middlegame: [], endgame: [],
     };
+    const allMoveAccs: number[] = [];
 
     for (let i = 0; i < sorted.length - 1; i++) {
       const curr = sorted[i];
@@ -788,6 +793,7 @@ export function computeArenaStats(
       const phase: "opening" | "middlegame" | "endgame" = isOpening ? "opening" : isEndgame ? "endgame" : "middlegame";
 
       phaseAccs[phase].push(acc);
+      allMoveAccs.push(acc);
 
       // Best move tracking
       if (curr.bestMoveUci) {
@@ -811,6 +817,17 @@ export function computeArenaStats(
         const hm = harmonicMean(phaseAccs[phase]);
         phaseGameAccuracies[phase].push(hm);
         if (resultKey) phaseAccByResult[phase][resultKey].push(hm);
+      }
+    }
+
+    // Overall accuracy for this game (harmonic mean of all move accuracies)
+    if (allMoveAccs.length > 0) {
+      const gameHm = harmonicMean(allMoveAccs);
+      overallGameAccuracies.push(gameHm);
+      if (playerIsWhite) {
+        whiteGameAccuracies.push(gameHm);
+      } else {
+        blackGameAccuracies.push(gameHm);
       }
     }
   }
@@ -1130,15 +1147,16 @@ export function computeArenaStats(
     form = clamp(Math.round((recentAvg - overallAvg) / 2.5), -4, 4);
   }
 
-  // ── Back stats ──
-  const whiteAccs = games.map((g) => g.accuracyWhite).filter((a): a is number => a != null);
-  const blackAccs = games.map((g) => g.accuracyBlack).filter((a): a is number => a != null);
-  const accWhite = whiteAccs.length > 0 ? round2(whiteAccs.reduce((s, v) => s + v, 0) / whiteAccs.length) : null;
-  const accBlack = blackAccs.length > 0 ? round2(blackAccs.reduce((s, v) => s + v, 0) / blackAccs.length) : null;
-  const accOverall =
-    accWhite != null && accBlack != null
-      ? round2((accWhite + accBlack) / 2)
-      : accWhite ?? accBlack ?? null;
+  // ── Back stats (computed from position-level Stockfish data, same method as phase accuracy) ──
+  const accWhite = whiteGameAccuracies.length > 0
+    ? round2(whiteGameAccuracies.reduce((s, v) => s + v, 0) / whiteGameAccuracies.length)
+    : null;
+  const accBlack = blackGameAccuracies.length > 0
+    ? round2(blackGameAccuracies.reduce((s, v) => s + v, 0) / blackGameAccuracies.length)
+    : null;
+  const accOverall = overallGameAccuracies.length > 0
+    ? round2(overallGameAccuracies.reduce((s, v) => s + v, 0) / overallGameAccuracies.length)
+    : null;
 
   // ── Build response ──
   const categories: Record<CategoryName, CategoryResult> = {} as any;

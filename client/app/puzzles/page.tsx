@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import type { Arrow } from "react-chessboard";
 import { Chess, Square } from "chess.js";
 import { useUserContext } from "../UserContext";
+import { useAuth } from "../AuthContext";
 
 const Chessboard = dynamic(
   () => import("react-chessboard").then((mod) => mod.Chessboard),
@@ -204,7 +205,17 @@ function formatMoveList(fen: string, uciMoves: string[]): string {
 }
 
 export default function PuzzlesPage() {
-  const { queriedUser, searchTrigger } = useUserContext();
+  const { queriedUser, setQueriedUser, searchTrigger } = useUserContext();
+  const { authUser, authLoading } = useAuth();
+
+  // Auto-set queriedUser from logged-in user if not already set
+  const autoLoadFired = useRef(false);
+  useEffect(() => {
+    if (authLoading || !authUser || autoLoadFired.current) return;
+    if (queriedUser) return;
+    autoLoadFired.current = true;
+    setQueriedUser(authUser);
+  }, [authUser, authLoading, queriedUser, setQueriedUser]);
 
   // List state
   const [categoryFilter, setCategoryFilter] = useState("all");

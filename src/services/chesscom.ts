@@ -127,9 +127,14 @@ export async function importGames(username: string, timeCategory?: string, rated
   }
 
   // Delete puzzles, positions, then games (respecting foreign keys)
-  await prisma.puzzle.deleteMany({ where: { game: deleteFilter } });
-  await prisma.position.deleteMany({ where: { game: deleteFilter } });
-  await prisma.game.deleteMany({ where: deleteFilter });
+  // Fetch game IDs first to ensure consistent deletes across all three tables
+  const gamesToDelete = await prisma.game.findMany({ where: deleteFilter, select: { id: true } });
+  const gameIds = gamesToDelete.map((g) => g.id);
+  if (gameIds.length > 0) {
+    await prisma.puzzle.deleteMany({ where: { gameId: { in: gameIds } } });
+    await prisma.position.deleteMany({ where: { gameId: { in: gameIds } } });
+    await prisma.game.deleteMany({ where: { id: { in: gameIds } } });
+  }
 
   let imported = 0;
 

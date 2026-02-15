@@ -83,6 +83,7 @@ router.get(
           result: true,
           accuracyWhite: true,
           accuracyBlack: true,
+          pgn: true,
           createdAt: true,
         },
         orderBy: { endDate: "desc" },
@@ -101,17 +102,33 @@ router.get(
         },
       });
 
+      // Helper to extract opponent name and player side from PGN headers
+      const parsePgn = (pgn: string, myUsername: string) => {
+        const whiteMatch = pgn.match(/\[White\s+"([^"]+)"\]/);
+        const blackMatch = pgn.match(/\[Black\s+"([^"]+)"\]/);
+        const white = whiteMatch?.[1];
+        const black = blackMatch?.[1];
+        if (!white || !black) return { opponent: null, playerSide: null as "white" | "black" | null };
+        const isWhite = white.toLowerCase() === myUsername.toLowerCase();
+        return { opponent: isWhite ? black : white, playerSide: (isWhite ? "white" : "black") as "white" | "black" };
+      };
+
       res.json({
-        games: games.map((g) => ({
-          id: g.id,
-          endTime: g.endDate,
-          timeControl: g.timeControl,
-          result: g.result,
-          accuracyWhite: g.accuracyWhite,
-          accuracyBlack: g.accuracyBlack,
-          source: user.platform,
-          createdAt: g.createdAt,
-        })),
+        games: games.map((g) => {
+          const { opponent, playerSide } = parsePgn(g.pgn, username);
+          return {
+            id: g.id,
+            endTime: g.endDate,
+            timeControl: g.timeControl,
+            result: g.result,
+            accuracyWhite: g.accuracyWhite,
+            accuracyBlack: g.accuracyBlack,
+            opponent,
+            playerSide,
+            source: user.platform,
+            createdAt: g.createdAt,
+          };
+        }),
         total,
         limit,
         offset,

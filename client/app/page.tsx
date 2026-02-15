@@ -43,6 +43,8 @@ interface GameData {
   result: "WIN" | "LOSS" | "DRAW";
   accuracyWhite: number | null;
   accuracyBlack: number | null;
+  opponent?: string | null;
+  playerSide?: "white" | "black" | null;
 }
 
 interface ProfileData {
@@ -86,12 +88,44 @@ export default function Home() {
   const [premiumPage, setPremiumPage] = useState(0);
   const [targetRating, setTargetRating] = useState<number | null>(null);
   const [targetStats, setTargetStats] = useState<TargetStatsData | null>(null);
+  const [savedTarget, setSavedTarget] = useState<number | null>(null);
   const targetDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showProgress, setShowProgress] = useState(false);
   const loadStartRef = useRef<number>(0);
   const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const lastTriggerRef = useRef(0);
+
+  // ── Target rating persistence ──
+  const TARGET_KEY = (user: string, tc: string) => `arena_target_${user.toLowerCase()}_${tc}`;
+
+  function saveTarget(user: string, tc: string, rating: number) {
+    try { localStorage.setItem(TARGET_KEY(user, tc), String(rating)); } catch { /* */ }
+  }
+
+  function loadTarget(user: string, tc: string): number | null {
+    try {
+      const v = localStorage.getItem(TARGET_KEY(user, tc));
+      return v ? Number(v) : null;
+    } catch { return null; }
+  }
+
+  function clearSavedTarget(user: string, tc: string) {
+    try { localStorage.removeItem(TARGET_KEY(user, tc)); } catch { /* */ }
+  }
+
+  // Load saved target when user or active card changes
+  useEffect(() => {
+    if (!queriedUser || cards.length === 0) return;
+    const activeCard = cards[activeIndex];
+    if (!activeCard) return;
+    const saved = loadTarget(queriedUser, activeCard.timeControl);
+    setSavedTarget(saved);
+    if (saved && targetRating == null) {
+      setTargetRating(saved);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queriedUser, activeIndex, cards]);
 
   // ── Cache helpers ──
   const CACHE_KEY = (user: string) => `arena_cache_${user.toLowerCase()}`;
@@ -583,7 +617,14 @@ export default function Home() {
           const statDiffs = buildStatDiffs();
 
           const handleRatingChange = (r: number) => {
-            setTargetRating(r === 0 ? null : r);
+            if (r === 0) {
+              setTargetRating(null);
+            } else if (targetRating == null && r <= 500) {
+              // Spinner arrow from empty — start near current rating instead of min
+              setTargetRating(currentRating + 200);
+            } else {
+              setTargetRating(r);
+            }
           };
 
           return (
@@ -704,8 +745,8 @@ export default function Home() {
               {/* ── Target Rating Card ── */}
               <div style={{ flexShrink: 0 }}>
                 <div style={{
-                  filter: fictiveStats ? "saturate(0.45) brightness(0.92)" : "saturate(0) brightness(0.5)",
-                  opacity: fictiveStats ? 0.85 : 0.35,
+                  filter: "saturate(0.45) brightness(0.92)",
+                  opacity: 0.85,
                   transition: "all 0.4s ease",
                   border: "2px solid #000",
                   borderRadius: 14,
@@ -723,6 +764,80 @@ export default function Home() {
                     onRatingChange={handleRatingChange}
                     ratingPlaceholder={String(currentRating + 200)}
                   />
+                </div>
+                {/* Set / Clear target button */}
+                <div style={{ display: "flex", justifyContent: "center", marginTop: 8, gap: 6 }}>
+                  {targetRating != null && targetRating > 0 && (
+                    <>
+                      {savedTarget !== targetRating ? (
+                        <button
+                          onClick={() => {
+                            if (activeCard) {
+                              saveTarget(queriedUser, activeCard.timeControl, targetRating);
+                              setSavedTarget(targetRating);
+                            }
+                          }}
+                          style={{
+                            padding: "5px 14px",
+                            fontSize: 11,
+                            fontWeight: 800,
+                            borderRadius: 6,
+                            border: "none",
+                            backgroundColor: "#81b64c",
+                            color: "#fff",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#6fa33e"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#81b64c"; }}
+                        >
+                          Set Target
+                        </button>
+                      ) : (
+                        <span style={{
+                          padding: "5px 14px",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          color: "#81b64c",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}>
+                          <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                            <path d="M3 8l3.5 3.5L13 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          Target Set
+                        </span>
+                      )}
+                      {savedTarget != null && (
+                        <button
+                          onClick={() => {
+                            if (activeCard) {
+                              clearSavedTarget(queriedUser, activeCard.timeControl);
+                              setSavedTarget(null);
+                              setTargetRating(null);
+                              setTargetStats(null);
+                            }
+                          }}
+                          style={{
+                            padding: "5px 10px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            borderRadius: 6,
+                            border: "none",
+                            backgroundColor: "#3d3a37",
+                            color: "#9b9895",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#4a4745"; e.currentTarget.style.color = "#fff"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#3d3a37"; e.currentTarget.style.color = "#9b9895"; }}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -918,7 +1033,7 @@ export default function Home() {
             {/* Result Form Graph */}
             {games.length > 0 && !gamesLoading && (
               <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895", marginBottom: 16 }}>Result Form</p>
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895", marginBottom: 16 }}>Accuracy by Result</p>
                 <FormGraph games={games} chessRating={cards.find((c) => c.timeControl === gameTimeCategory)?.chessRating} />
               </div>
             )}
@@ -1561,255 +1676,224 @@ export default function Home() {
   );
 }
 
-// ── Form Graph (SVG) ──────────────────────────────────────────────────
+// ── Accuracy Scatter Graph (SVG) ─────────────────────────────────────
 
-function FormGraph({ games, chessRating }: { games: GameData[]; chessRating?: number }) {
-  const [showResult, setShowResult] = useState(true);
-  const [showAccuracy, setShowAccuracy] = useState(true);
+function FormGraph({ games }: { games: GameData[]; chessRating?: number }) {
+  const [hovered, setHovered] = useState<number | null>(null);
 
-  // Games come newest-first; reverse so graph reads left-to-right chronologically
-  const chronological = [...games].reverse();
-
-  // Build running form score: +1 win, 0 draw, -1 loss
-  const points: number[] = [];
-  let score = 0;
-  for (const g of chronological) {
-    if (g.result === "WIN") score += 1;
-    else if (g.result === "LOSS") score -= 1;
-    points.push(score);
-  }
-
-  // Build accuracy form: rolling 5-game average accuracy
-  const WINDOW = 5;
   const gameAccuracy = (g: GameData): number | null => {
-    if (g.accuracyWhite != null && g.accuracyBlack != null) return (g.accuracyWhite + g.accuracyBlack) / 2;
+    // Use only the player's own accuracy, not the opponent's
+    if (g.playerSide === "white") return g.accuracyWhite ?? null;
+    if (g.playerSide === "black") return g.accuracyBlack ?? null;
+    // Fallback if playerSide not available
     return g.accuracyWhite ?? g.accuracyBlack ?? null;
   };
-  const rawAccs = chronological.map(gameAccuracy);
+
+  // Games come newest-first; reverse for chronological left-to-right
+  const chronological = [...games].reverse();
+  const dataPoints = chronological
+    .map((g, i) => ({ index: i, acc: gameAccuracy(g), result: g.result, opponent: g.opponent ?? null, date: g.endTime }))
+    .filter((d): d is { index: number; acc: number; result: "WIN" | "LOSS" | "DRAW"; opponent: string | null; date: string } => d.acc != null);
+
+  if (dataPoints.length === 0) return null;
+
+  const n = chronological.length;
+  const RESULT_COLORS: Record<string, string> = { WIN: "#81b64c", LOSS: "#e05252", DRAW: "#c27a30" };
+
+  // Y-axis range: fit to data with some padding
+  const allAccs = dataPoints.map((d) => d.acc);
+  const dataMin = Math.min(...allAccs);
+  const dataMax = Math.max(...allAccs);
+  const yMin = Math.max(0, Math.floor((dataMin - 5) / 5) * 5);
+  const yMax = Math.min(100, Math.ceil((dataMax + 5) / 5) * 5);
+  const yRange = Math.max(yMax - yMin, 10);
+
+  // Average accuracy by result
+  const avgByResult: Record<string, { sum: number; count: number }> = { WIN: { sum: 0, count: 0 }, LOSS: { sum: 0, count: 0 }, DRAW: { sum: 0, count: 0 } };
+  for (const d of dataPoints) {
+    avgByResult[d.result].sum += d.acc;
+    avgByResult[d.result].count++;
+  }
+  const avgAcc = (r: string) => avgByResult[r].count > 0 ? avgByResult[r].sum / avgByResult[r].count : null;
+
+  // Rolling 5-game average for trend line
+  const WINDOW = 5;
   const rollingAcc: (number | null)[] = [];
   const accBuffer: number[] = [];
-  for (const acc of rawAccs) {
+  for (const g of chronological) {
+    const acc = gameAccuracy(g);
     if (acc != null) accBuffer.push(acc);
     if (accBuffer.length > WINDOW) accBuffer.shift();
     rollingAcc.push(accBuffer.length > 0 ? accBuffer.reduce((s, v) => s + v, 0) / accBuffer.length : null);
   }
 
-  const n = points.length;
-  if (n === 0) return null;
-
-  // Result form Y range (for left axis)
-  const minVal = Math.min(...points, 0);
-  const maxVal = Math.max(...points, 0);
-  const range = Math.max(maxVal - minVal, 1);
-
-  // Accuracy Y range (for right axis, fixed 0–100%)
-  const validAccValues = rollingAcc.filter((a): a is number => a != null);
-  const accMin = 0;
-  const accMax = 100;
-  const accRange = 100;
-
-  // SVG dimensions — fixed height to prevent layout jumps on filter change
+  // SVG layout
   const W = 700;
   const H = 280;
   const padX = 40;
-  const padTop = 20;
-  const padBottom = 36;
-  const padRight = 46;
+  const padTop = 28;
+  const padBottom = 28;
+  const padRight = 16;
   const graphW = W - padX - padRight;
   const graphH = H - padTop - padBottom;
   const toX = (i: number) => padX + (i / Math.max(n - 1, 1)) * graphW;
-  const toY = (v: number) => padTop + graphH - ((v - minVal) / range) * graphH;
-  const toAccY = (v: number) => padTop + graphH - ((v - accMin) / accRange) * graphH;
+  const toY = (v: number) => padTop + graphH - ((v - yMin) / yRange) * graphH;
 
-  // Zero line Y
-  const zeroY = toY(0);
+  // Y-axis labels
+  const yStep = yRange <= 20 ? 5 : 10;
+  const yLabels: number[] = [];
+  for (let v = yMin; v <= yMax; v += yStep) yLabels.push(v);
 
-  // Build result form line path
-  const linePath = points
-    .map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(1)} ${toY(v).toFixed(1)}`)
-    .join(" ");
-
-  // Build accuracy form line path (smooth, on its own scale)
-  let accLinePath = "";
-  let accStarted = false;
+  // Build trend line path
+  let trendPath = "";
+  let trendStarted = false;
   for (let i = 0; i < n; i++) {
     const v = rollingAcc[i];
-    if (v == null) { accStarted = false; continue; }
-    accLinePath += `${!accStarted ? "M" : "L"} ${toX(i).toFixed(1)} ${toAccY(v).toFixed(1)} `;
-    accStarted = true;
+    if (v == null) { trendStarted = false; continue; }
+    trendPath += `${!trendStarted ? "M" : "L"} ${toX(i).toFixed(1)} ${toY(v).toFixed(1)} `;
+    trendStarted = true;
   }
 
-  // Build filled area path (from result line down to zero)
-  const areaPath =
-    `M ${toX(0).toFixed(1)} ${zeroY.toFixed(1)} ` +
-    points.map((v, i) => `L ${toX(i).toFixed(1)} ${toY(v).toFixed(1)}`).join(" ") +
-    ` L ${toX(n - 1).toFixed(1)} ${zeroY.toFixed(1)} Z`;
-
-  // Final form value for color
-  const finalScore = points[n - 1];
-  const lineColor = "#81b64c";
-  const accColor = "#5b9bd5";
-  const lastAcc = rollingAcc[n - 1];
-
-  // Left Y-axis labels (result form)
-  const yLabels: number[] = [];
-  const step = Math.max(1, Math.ceil(range / 5));
-  for (let v = Math.floor(minVal / step) * step; v <= maxVal; v += step) {
-    yLabels.push(v);
-  }
-
-  // Right Y-axis labels (accuracy %)
-  const accYLabels: number[] = [];
-  const accStep = Math.max(1, Math.ceil(accRange / 4));
-  for (let v = Math.floor(accMin / accStep) * accStep; v <= accMax; v += accStep) {
-    accYLabels.push(Math.round(v));
-  }
+  // Hovered point data
+  const hoveredData = hovered != null ? dataPoints.find((d) => d.index === hovered) : null;
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      style={{ width: "100%", height: "auto" }}
-      preserveAspectRatio="xMidYMid meet"
-    >
-      {/* Grid lines + left Y-axis labels (result form) */}
-      {yLabels.map((v) => (
-        <g key={v}>
-          <line
-            x1={padX}
-            y1={toY(v)}
-            x2={W - padRight}
-            y2={toY(v)}
-            stroke={v === 0 ? "#4a4745" : "#3a3733"}
-            strokeWidth={v === 0 ? 1.5 : 0.5}
-            strokeDasharray={v === 0 ? undefined : "4 4"}
-          />
-          <text
-            x={padX - 8}
-            y={toY(v) + 4}
-            textAnchor="end"
-            fill="#6b6966"
-            fontSize={11}
-            fontWeight={600}
-          >
-            {v > 0 ? `+${v}` : v}
-          </text>
-        </g>
-      ))}
-
-      {/* Right Y-axis labels (accuracy %) */}
-      {showAccuracy && accYLabels.map((v) => (
-        <text
-          key={`acc-${v}`}
-          x={W - padRight + 8}
-          y={toAccY(v) + 4}
-          textAnchor="start"
-          fill={accColor}
-          fontSize={11}
-          fontWeight={700}
-          opacity={0.85}
-        >
-          {v}%
-        </text>
-      ))}
-
-      {/* Result form: area + line + dots */}
-      {showResult && (
-        <>
-          <path d={areaPath} fill={lineColor} opacity={0.08} />
-          <path d={linePath} fill="none" stroke={lineColor} strokeWidth={n > 60 ? 2 : 2.5} strokeLinejoin="round" strokeLinecap="round" />
-          {points.map((v, i) => {
-            if (n > 60) {
-              const isFirst = i === 0;
-              const isLast = i === n - 1;
-              const prev = i > 0 ? points[i - 1] : v;
-              const next = i < n - 1 ? points[i + 1] : v;
-              const isExtreme = (v >= prev && v >= next) || (v <= prev && v <= next);
-              const dirChange = i > 0 && i < n - 1 &&
-                Math.sign(v - prev) !== 0 && Math.sign(next - v) !== 0 &&
-                Math.sign(v - prev) !== Math.sign(next - v);
-              if (!isFirst && !isLast && !isExtreme && !dirChange) return null;
-            }
-            const result = chronological[i].result;
-            const dotColor = result === "WIN" ? "#81b64c" : result === "LOSS" ? "#e05252" : "#c27a30";
-            const dotR = n > 60 ? 2.5 : 3.5;
-            return (
-              <circle
-                key={i}
-                cx={toX(i)}
-                cy={toY(v)}
-                r={dotR}
-                fill={dotColor}
-                stroke="#262421"
-                strokeWidth={1}
-              />
-            );
-          })}
-        </>
-      )}
-
-      {/* Accuracy line */}
-      {showAccuracy && accLinePath && (
-        <path d={accLinePath} fill="none" stroke={accColor} strokeWidth={n > 60 ? 2 : 2.5} strokeLinejoin="round" strokeLinecap="round" opacity={0.85} />
-      )}
-
-      {/* Legend (clickable toggles) */}
-      <g style={{ cursor: "pointer" }} onClick={() => setShowResult((v) => !v)} opacity={showResult ? 1 : 0.3}>
-        <rect x={padX - 2} y={padTop - 16} width={58} height={14} fill="transparent" />
-        <line x1={padX} y1={padTop - 8} x2={padX + 16} y2={padTop - 8} stroke={lineColor} strokeWidth={2.5} strokeLinecap="round" />
-        <text x={padX + 20} y={padTop - 4} fill={lineColor} fontSize={10} fontWeight={700}>Result</text>
-      </g>
-      <g style={{ cursor: "pointer" }} onClick={() => setShowAccuracy((v) => !v)} opacity={showAccuracy ? 1 : 0.3}>
-        <rect x={padX + 60} y={padTop - 16} width={68} height={14} fill="transparent" />
-        <line x1={padX + 62} y1={padTop - 8} x2={padX + 78} y2={padTop - 8} stroke={accColor} strokeWidth={2.5} strokeLinecap="round" />
-        <text x={padX + 82} y={padTop - 4} fill={accColor} fontSize={10} fontWeight={700}>Accuracy</text>
-      </g>
-
-      {/* X-axis: rating at start, middle, end */}
-      {[0, Math.floor((n - 1) / 2), n - 1].map((idx) => {
-        // Estimate rating at each point: current rating minus remaining form delta
-        const ratingAtPoint = chessRating
-          ? Math.round(chessRating - (finalScore - points[idx]) * 8)
-          : undefined;
-        const anchor = idx === 0 ? "start" : idx === n - 1 ? "end" : "middle";
-        return (
-          <g key={`x-${idx}`}>
-            {/* Tick mark */}
+    <div>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ width: "100%", height: "auto" }}
+        preserveAspectRatio="xMidYMid meet"
+        onMouseLeave={() => setHovered(null)}
+      >
+        {/* Grid lines + Y-axis labels */}
+        {yLabels.map((v) => (
+          <g key={v}>
             <line
-              x1={toX(idx)}
-              y1={padTop + graphH}
-              x2={toX(idx)}
-              y2={padTop + graphH + 5}
-              stroke="#4a4745"
-              strokeWidth={1}
+              x1={padX} y1={toY(v)} x2={W - padRight} y2={toY(v)}
+              stroke="#3a3733" strokeWidth={0.5} strokeDasharray="4 4"
             />
-            {/* Rating */}
-            {ratingAtPoint != null && (
-              <text
-                x={toX(idx)}
-                y={padTop + graphH + 18}
-                textAnchor={anchor}
-                fill="#9b9895"
-                fontSize={11}
-                fontWeight={700}
-              >
-                {ratingAtPoint}
-              </text>
-            )}
-            {/* Game number */}
-            <text
-              x={toX(idx)}
-              y={padTop + graphH + (ratingAtPoint != null ? 30 : 18)}
-              textAnchor={anchor}
-              fill="#6b6966"
-              fontSize={9}
-              fontWeight={600}
-            >
-              {idx === 0 ? "Game 1" : idx === n - 1 ? `Game ${n}` : `Game ${idx + 1}`}
+            <text x={padX - 8} y={toY(v) + 4} textAnchor="end" fill="#6b6966" fontSize={11} fontWeight={600}>
+              {v}%
             </text>
           </g>
-        );
-      })}
-    </svg>
+        ))}
+
+        {/* Average accuracy lines per result */}
+        {(["WIN", "LOSS", "DRAW"] as const).map((r) => {
+          const avg = avgAcc(r);
+          if (avg == null || avg < yMin || avg > yMax) return null;
+          return (
+            <line
+              key={r}
+              x1={padX} y1={toY(avg)} x2={W - padRight} y2={toY(avg)}
+              stroke={RESULT_COLORS[r]} strokeWidth={1} strokeDasharray="6 4" opacity={0.35}
+            />
+          );
+        })}
+
+        {/* Trend line (rolling average) */}
+        {trendPath && (
+          <path d={trendPath} fill="none" stroke="#fff" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" opacity={0.3} />
+        )}
+
+        {/* Scatter dots */}
+        {dataPoints.map((d) => {
+          const isHovered = hovered === d.index;
+          return (
+            <circle
+              key={d.index}
+              cx={toX(d.index)}
+              cy={toY(d.acc)}
+              r={isHovered ? 6 : 4}
+              fill={RESULT_COLORS[d.result] ?? "#6b6966"}
+              stroke={isHovered ? "#fff" : "#262421"}
+              strokeWidth={isHovered ? 2 : 1}
+              opacity={hovered != null && !isHovered ? 0.35 : 0.85}
+              style={{ cursor: "pointer", transition: "all 0.1s ease" }}
+              onMouseEnter={() => setHovered(d.index)}
+            />
+          );
+        })}
+
+        {/* Hover tooltip */}
+        {hoveredData && (() => {
+          const x = toX(hoveredData.index);
+          const y = toY(hoveredData.acc);
+          const label = `${hoveredData.acc.toFixed(1)}%`;
+          const resultLabel = hoveredData.result === "WIN" ? "Win" : hoveredData.result === "LOSS" ? "Loss" : "Draw";
+          const opponent = hoveredData.opponent;
+          const dateStr = hoveredData.date ? new Date(hoveredData.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
+          const tooltipW = opponent ? Math.max(100, opponent.length * 7 + 24) : 72;
+          const tooltipH = opponent || dateStr ? 52 : 34;
+          const tx = Math.min(Math.max(x - tooltipW / 2, padX), W - padRight - tooltipW);
+          const ty = y - tooltipH - 10;
+          return (
+            <g>
+              <rect x={tx} y={ty} width={tooltipW} height={tooltipH} rx={6} fill="#1c1b19" stroke="#3d3a37" strokeWidth={1} />
+              <text x={tx + tooltipW / 2} y={ty + 14} textAnchor="middle" fill="#fff" fontSize={11} fontWeight={800}>
+                {label}
+              </text>
+              <text x={tx + tooltipW / 2} y={ty + 26} textAnchor="middle" fill={RESULT_COLORS[hoveredData.result]} fontSize={10} fontWeight={700}>
+                {resultLabel}
+              </text>
+              {(opponent || dateStr) && (
+                <text x={tx + tooltipW / 2} y={ty + 40} textAnchor="middle" fill="#6b6966" fontSize={9} fontWeight={600}>
+                  {opponent ? `vs ${opponent}` : ""}{opponent && dateStr ? " · " : ""}{dateStr ?? ""}
+                </text>
+              )}
+            </g>
+          );
+        })()}
+
+        {/* X-axis labels */}
+        {[0, Math.floor((n - 1) / 2), n - 1].map((idx) => {
+          const anchor = idx === 0 ? "start" : idx === n - 1 ? "end" : "middle";
+          return (
+            <text key={`x-${idx}`} x={toX(idx)} y={padTop + graphH + 16} textAnchor={anchor} fill="#6b6966" fontSize={9} fontWeight={600}>
+              {idx === 0 ? "Game 1" : idx === n - 1 ? `Game ${n}` : `Game ${idx + 1}`}
+            </text>
+          );
+        })}
+
+        {/* Legend */}
+        {[
+          { label: "Win", color: RESULT_COLORS.WIN, x: padX },
+          { label: "Loss", color: RESULT_COLORS.LOSS, x: padX + 50 },
+          { label: "Draw", color: RESULT_COLORS.DRAW, x: padX + 104 },
+          { label: "Trend", color: "#fff", x: padX + 162 },
+        ].map((item) => (
+          <g key={item.label}>
+            {item.label === "Trend" ? (
+              <line x1={item.x} y1={padTop - 12} x2={item.x + 14} y2={padTop - 12} stroke={item.color} strokeWidth={2} opacity={0.3} strokeLinecap="round" />
+            ) : (
+              <circle cx={item.x + 4} cy={padTop - 12} r={4} fill={item.color} opacity={0.85} />
+            )}
+            <text x={item.x + 18} y={padTop - 8} fill={item.color} fontSize={10} fontWeight={700} opacity={item.label === "Trend" ? 0.4 : 0.85}>
+              {item.label}
+            </text>
+          </g>
+        ))}
+      </svg>
+
+      {/* Summary stats below the graph */}
+      <div style={{ display: "flex", gap: 24, justifyContent: "center", marginTop: 8 }}>
+        {(["WIN", "LOSS", "DRAW"] as const).map((r) => {
+          const avg = avgAcc(r);
+          const count = avgByResult[r].count;
+          if (count === 0) return null;
+          const label = r === "WIN" ? "Wins" : r === "LOSS" ? "Losses" : "Draws";
+          return (
+            <div key={r} style={{ textAlign: "center" }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: "#6b6966", margin: 0 }}>Avg in {label}</p>
+              <p style={{ fontSize: 18, fontWeight: 800, color: RESULT_COLORS[r], margin: "2px 0 0" }}>
+                {avg != null ? `${avg.toFixed(1)}%` : "—"}
+              </p>
+              <p style={{ fontSize: 10, fontWeight: 600, color: "#4a4745", margin: 0 }}>({count} games)</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
