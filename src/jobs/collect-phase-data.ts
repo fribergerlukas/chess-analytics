@@ -221,7 +221,8 @@ async function computePhaseAccuracyForUser(username: string): Promise<{
 
     for (const phase of ["opening", "middlegame", "endgame"] as const) {
       if (phaseAccs[phase].length > 0) {
-        phaseGameAccuracies[phase].push(harmonicMean(phaseAccs[phase]));
+        const capped = phaseAccs[phase].map((v) => Math.max(v, 24));
+        phaseGameAccuracies[phase].push(harmonicMean(capped));
       }
     }
   }

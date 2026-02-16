@@ -74,7 +74,7 @@ async function runEvalPipeline(userId: number, username: string, job: UserJob) {
   try {
     for (const game of games) {
       // Evaluate
-      await evaluateGamePositions(engine, game.id, 15);
+      await evaluateGamePositions(engine, game.id, 18);
 
       // Classify blunders
       await detectGameBlunders(game.id);

@@ -48,6 +48,11 @@ export interface ArenaStatsResponse {
     middlegame: number | null;
     endgame: number | null;
   };
+  phaseBestMoveRateVsExpected: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
   phaseAccuracyByResult: {
     opening: { wins: number | null; draws: number | null; losses: number | null };
     middlegame: { wins: number | null; draws: number | null; losses: number | null };
@@ -300,55 +305,214 @@ const EXPECTED_MISSED_WIN_CURVE: RatePoint[] = [
 // Endgame accuracy plateaus ~87-90% at top levels (complex technical endgames).
 
 const EXPECTED_OPENING_PHASE_ACCURACY_CURVE: RatePoint[] = [
-  { rating: 400,  rate: 73 },
-  { rating: 496,  rate: 75.2 },
-  { rating: 889,  rate: 82.5 },
-  { rating: 1112, rate: 83.3 },
-  { rating: 1300, rate: 85.8 },
-  { rating: 1501, rate: 88.0 },
-  { rating: 1712, rate: 90.2 },
-  { rating: 1895, rate: 90.7 },
-  { rating: 2095, rate: 92.1 },
-  { rating: 2287, rate: 92.8 },
-  { rating: 2473, rate: 93.5 },
-  { rating: 2676, rate: 94.0 },
-  { rating: 2921, rate: 94.8 },
-  { rating: 3500, rate: 96 },
+  { rating: 400,  rate: 66 },
+  { rating: 496,  rate: 69.5 },
+  { rating: 889,  rate: 76.8 },
+  { rating: 1112, rate: 76.8 },
+  { rating: 1300, rate: 80.3 },
+  { rating: 1501, rate: 82.4 },
+  { rating: 1712, rate: 85.3 },
+  { rating: 1895, rate: 86.0 },
+  { rating: 2095, rate: 88.1 },
+  { rating: 2287, rate: 88.9 },
+  { rating: 2473, rate: 89.8 },
+  { rating: 2676, rate: 90.6 },
+  { rating: 2921, rate: 91.9 },
+  { rating: 3500, rate: 94 },
 ];
 
 const EXPECTED_MIDDLEGAME_ACCURACY_CURVE: RatePoint[] = [
-  { rating: 400,  rate: 65 },
-  { rating: 496,  rate: 67.9 },
-  { rating: 889,  rate: 71.0 },
-  { rating: 1112, rate: 73.0 },
-  { rating: 1300, rate: 74.1 },
-  { rating: 1501, rate: 76.9 },
-  { rating: 1712, rate: 79.2 },
-  { rating: 1895, rate: 80.1 },
-  { rating: 2095, rate: 82.6 },
-  { rating: 2287, rate: 82.6 },
-  { rating: 2473, rate: 83.8 },
-  { rating: 2676, rate: 85.8 },
-  { rating: 2921, rate: 87.5 },
-  { rating: 3500, rate: 89 },
+  { rating: 400,  rate: 60 },
+  { rating: 496,  rate: 63.2 },
+  { rating: 889,  rate: 65.0 },
+  { rating: 1112, rate: 65.8 },
+  { rating: 1300, rate: 67.6 },
+  { rating: 1501, rate: 69.9 },
+  { rating: 1712, rate: 72.2 },
+  { rating: 1895, rate: 72.4 },
+  { rating: 2095, rate: 74.9 },
+  { rating: 2287, rate: 75.5 },
+  { rating: 2473, rate: 77.2 },
+  { rating: 2676, rate: 79.3 },
+  { rating: 2921, rate: 81.5 },
+  { rating: 3500, rate: 84 },
 ];
 
 const EXPECTED_ENDGAME_PHASE_ACCURACY_CURVE: RatePoint[] = [
-  { rating: 400,  rate: 78 },
-  { rating: 496,  rate: 78.6 },
-  { rating: 889,  rate: 78.6 },
-  { rating: 1112, rate: 78.6 },
-  { rating: 1300, rate: 78.6 },
-  { rating: 1501, rate: 81.0 },
-  { rating: 1712, rate: 81.0 },
-  { rating: 1895, rate: 83.1 },
-  { rating: 2095, rate: 83.2 },
-  { rating: 2287, rate: 83.8 },
-  { rating: 2473, rate: 83.8 },
-  { rating: 2676, rate: 86.7 },
-  { rating: 2921, rate: 86.8 },
-  { rating: 3500, rate: 88 },
+  { rating: 400,  rate: 71 },
+  { rating: 496,  rate: 73.4 },
+  { rating: 889,  rate: 74.6 },
+  { rating: 1112, rate: 73.6 },
+  { rating: 1300, rate: 73.7 },
+  { rating: 1501, rate: 76.1 },
+  { rating: 1712, rate: 74.7 },
+  { rating: 1895, rate: 76.8 },
+  { rating: 2095, rate: 76.0 },
+  { rating: 2287, rate: 77.3 },
+  { rating: 2473, rate: 77.7 },
+  { rating: 2676, rate: 79.8 },
+  { rating: 2921, rate: 80.3 },
+  { rating: 3500, rate: 83 },
 ];
+
+// ── Expected per-phase best move rate by rating ──────────────────────
+// Placeholder curves — run collect-bestmove-data.ts + build-bestmove-curves.ts
+// to generate real data, then paste the output here.
+
+const EXPECTED_OPENING_BEST_MOVE_RATE_CURVE: RatePoint[] = [
+  { rating: 400,  rate: 30 },
+  { rating: 500,  rate: 32 },
+  { rating: 900,  rate: 36 },
+  { rating: 1100, rate: 38 },
+  { rating: 1300, rate: 40 },
+  { rating: 1500, rate: 43 },
+  { rating: 1700, rate: 46 },
+  { rating: 1900, rate: 49 },
+  { rating: 2100, rate: 52 },
+  { rating: 2300, rate: 55 },
+  { rating: 2500, rate: 58 },
+  { rating: 2700, rate: 61 },
+  { rating: 2900, rate: 64 },
+  { rating: 3500, rate: 70 },
+];
+
+const EXPECTED_MIDDLEGAME_BEST_MOVE_RATE_CURVE: RatePoint[] = [
+  { rating: 400,  rate: 22 },
+  { rating: 500,  rate: 24 },
+  { rating: 900,  rate: 28 },
+  { rating: 1100, rate: 30 },
+  { rating: 1300, rate: 32 },
+  { rating: 1500, rate: 35 },
+  { rating: 1700, rate: 38 },
+  { rating: 1900, rate: 41 },
+  { rating: 2100, rate: 44 },
+  { rating: 2300, rate: 47 },
+  { rating: 2500, rate: 50 },
+  { rating: 2700, rate: 53 },
+  { rating: 2900, rate: 56 },
+  { rating: 3500, rate: 62 },
+];
+
+const EXPECTED_ENDGAME_BEST_MOVE_RATE_CURVE: RatePoint[] = [
+  { rating: 400,  rate: 26 },
+  { rating: 500,  rate: 28 },
+  { rating: 900,  rate: 32 },
+  { rating: 1100, rate: 34 },
+  { rating: 1300, rate: 36 },
+  { rating: 1500, rate: 39 },
+  { rating: 1700, rate: 42 },
+  { rating: 1900, rate: 45 },
+  { rating: 2100, rate: 48 },
+  { rating: 2300, rate: 51 },
+  { rating: 2500, rate: 54 },
+  { rating: 2700, rate: 57 },
+  { rating: 2900, rate: 60 },
+  { rating: 3500, rate: 66 },
+];
+
+// ── Expected per-category composite scores by rating ─────────────────
+// Data-driven: collected from 348 players across 12 rating brackets via
+// collect-category-data.ts + build-category-curves.ts.
+// These are the average successRate (0–100) from computeArenaStats at each rating level.
+
+const EXPECTED_ATTACKING_SCORE_CURVE: RatePoint[] = [
+  { rating: 496, rate: 52.6 },
+  { rating: 889, rate: 58.1 },
+  { rating: 1111, rate: 54.9 },
+  { rating: 1300, rate: 58.9 },
+  { rating: 1501, rate: 54.5 },
+  { rating: 1712, rate: 55.1 },
+  { rating: 1895, rate: 52.1 },
+  { rating: 2095, rate: 50.9 },
+  { rating: 2287, rate: 51.3 },
+  { rating: 2473, rate: 52.3 },
+  { rating: 2676, rate: 53.5 },
+  { rating: 2921, rate: 54.7 },
+];
+
+const EXPECTED_DEFENDING_SCORE_CURVE: RatePoint[] = [
+  { rating: 496, rate: 63.7 },
+  { rating: 889, rate: 66.8 },
+  { rating: 1111, rate: 62.8 },
+  { rating: 1300, rate: 64.1 },
+  { rating: 1501, rate: 61.4 },
+  { rating: 1712, rate: 59.3 },
+  { rating: 1895, rate: 55.6 },
+  { rating: 2095, rate: 58.7 },
+  { rating: 2287, rate: 57.1 },
+  { rating: 2473, rate: 57.1 },
+  { rating: 2676, rate: 58.1 },
+  { rating: 2921, rate: 58.4 },
+];
+
+const EXPECTED_TACTICS_SCORE_CURVE: RatePoint[] = [
+  { rating: 496, rate: 76.7 },
+  { rating: 889, rate: 79.5 },
+  { rating: 1111, rate: 81.2 },
+  { rating: 1300, rate: 82.4 },
+  { rating: 1501, rate: 83.8 },
+  { rating: 1712, rate: 85.7 },
+  { rating: 1895, rate: 85.3 },
+  { rating: 2095, rate: 87 },
+  { rating: 2287, rate: 88 },
+  { rating: 2473, rate: 87.6 },
+  { rating: 2676, rate: 88.9 },
+  { rating: 2921, rate: 89.2 },
+];
+
+const EXPECTED_POSITIONAL_SCORE_CURVE: RatePoint[] = [
+  { rating: 496, rate: 67.9 },
+  { rating: 889, rate: 74.7 },
+  { rating: 1111, rate: 77.9 },
+  { rating: 1300, rate: 80.7 },
+  { rating: 1501, rate: 81.2 },
+  { rating: 1712, rate: 81.3 },
+  { rating: 1895, rate: 84.3 },
+  { rating: 2095, rate: 85.9 },
+  { rating: 2287, rate: 86.4 },
+  { rating: 2473, rate: 87.4 },
+  { rating: 2676, rate: 88.5 },
+  { rating: 2921, rate: 89.7 },
+];
+
+const EXPECTED_OPENING_SCORE_CURVE: RatePoint[] = [
+  { rating: 496, rate: 60.6 },
+  { rating: 889, rate: 67 },
+  { rating: 1111, rate: 63.1 },
+  { rating: 1300, rate: 64.8 },
+  { rating: 1501, rate: 62.5 },
+  { rating: 1712, rate: 59.2 },
+  { rating: 1895, rate: 55.5 },
+  { rating: 2095, rate: 51.7 },
+  { rating: 2287, rate: 51.4 },
+  { rating: 2473, rate: 49.8 },
+  { rating: 2676, rate: 45.4 },
+  { rating: 2921, rate: 47.9 },
+];
+
+const EXPECTED_ENDGAME_SCORE_CURVE: RatePoint[] = [
+  { rating: 496, rate: 48.5 },
+  { rating: 889, rate: 53.4 },
+  { rating: 1111, rate: 51.4 },
+  { rating: 1300, rate: 54 },
+  { rating: 1501, rate: 53 },
+  { rating: 1712, rate: 47.5 },
+  { rating: 1895, rate: 47.3 },
+  { rating: 2095, rate: 35.6 },
+  { rating: 2287, rate: 37.5 },
+  { rating: 2473, rate: 34.7 },
+  { rating: 2676, rate: 35 },
+  { rating: 2921, rate: 37.5 },
+];
+
+const EXPECTED_CATEGORY_CURVES: Record<CategoryName, RatePoint[]> = {
+  attacking: EXPECTED_ATTACKING_SCORE_CURVE,
+  defending: EXPECTED_DEFENDING_SCORE_CURVE,
+  tactics: EXPECTED_TACTICS_SCORE_CURVE,
+  positional: EXPECTED_POSITIONAL_SCORE_CURVE,
+  opening: EXPECTED_OPENING_SCORE_CURVE,
+  endgame: EXPECTED_ENDGAME_SCORE_CURVE,
+};
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -552,6 +716,12 @@ export interface TargetStatsResult {
     middlegame: number;
     endgame: number;
   };
+  expectedBestMoveRate: {
+    opening: number;
+    middlegame: number;
+    endgame: number;
+  };
+  expectedCategoryStats: Record<CategoryName, number>;
 }
 
 export function computeTargetStats(
@@ -563,6 +733,55 @@ export function computeTargetStats(
   const targetShiny =
     targetTier === "platinum" || targetArenaRating >= SHINY_THRESHOLDS[targetTier];
 
+  // Compute expected per-category stats using the same logic as computeArenaStats
+  // 1. Interpolate expected success rates for each category
+  const expectedSuccessRates: Record<CategoryName, number> = {} as any;
+  for (const cat of CATEGORY_NAMES) {
+    expectedSuccessRates[cat] = interpolateCurve(EXPECTED_CATEGORY_CURVES[cat], targetChessRating) / 100;
+  }
+
+  // 2. Compute deviations from the mean (same as computeArenaStats stat distribution)
+  const avgSuccessRate =
+    CATEGORY_NAMES.reduce((sum, cat) => sum + expectedSuccessRates[cat], 0) / CATEGORY_NAMES.length;
+
+  const rawDeviations: Record<CategoryName, number> = {} as any;
+  for (const cat of CATEGORY_NAMES) {
+    rawDeviations[cat] = (expectedSuccessRates[cat] - avgSuccessRate) * SCALE_FACTOR;
+  }
+
+  // 3. Normalize deviations to sum to 0
+  const devSum = CATEGORY_NAMES.reduce((sum, cat) => sum + rawDeviations[cat], 0);
+  const devAdj = devSum / CATEGORY_NAMES.length;
+
+  // 4. Apply to arena rating with stat bounds
+  const statBounds = getStatBounds(targetTier);
+  const expectedCategoryStats: Record<CategoryName, number> = {} as any;
+  for (const cat of CATEGORY_NAMES) {
+    expectedCategoryStats[cat] = clamp(
+      Math.round(targetArenaRating + rawDeviations[cat] - devAdj),
+      statBounds.min,
+      statBounds.max
+    );
+  }
+
+  // 5. Adjust so 6 stats average equals targetArenaRating exactly
+  let statSum = CATEGORY_NAMES.reduce((sum, cat) => sum + expectedCategoryStats[cat], 0);
+  let diff = targetArenaRating * 6 - statSum;
+  while (diff !== 0) {
+    const step = diff > 0 ? 1 : -1;
+    let adjusted = false;
+    for (const cat of CATEGORY_NAMES) {
+      if (diff === 0) break;
+      const newVal = expectedCategoryStats[cat] + step;
+      if (newVal >= statBounds.min && newVal <= statBounds.max) {
+        expectedCategoryStats[cat] = newVal;
+        diff -= step;
+        adjusted = true;
+      }
+    }
+    if (!adjusted) break;
+  }
+
   return {
     targetArenaRating,
     targetTier,
@@ -572,6 +791,12 @@ export function computeTargetStats(
       middlegame: round1(interpolateCurve(EXPECTED_MIDDLEGAME_ACCURACY_CURVE, targetChessRating)),
       endgame: round1(interpolateCurve(EXPECTED_ENDGAME_PHASE_ACCURACY_CURVE, targetChessRating)),
     },
+    expectedBestMoveRate: {
+      opening: round1(interpolateCurve(EXPECTED_OPENING_BEST_MOVE_RATE_CURVE, targetChessRating)),
+      middlegame: round1(interpolateCurve(EXPECTED_MIDDLEGAME_BEST_MOVE_RATE_CURVE, targetChessRating)),
+      endgame: round1(interpolateCurve(EXPECTED_ENDGAME_BEST_MOVE_RATE_CURVE, targetChessRating)),
+    },
+    expectedCategoryStats,
   };
 }
 
@@ -818,15 +1043,17 @@ export function computeArenaStats(
 
     for (const phase of ["opening", "middlegame", "endgame"] as const) {
       if (phaseAccs[phase].length > 0) {
-        const hm = harmonicMean(phaseAccs[phase]);
+        const capped = phaseAccs[phase].map((v) => Math.max(v, 24));
+        const hm = harmonicMean(capped);
         phaseGameAccuracies[phase].push(hm);
         if (resultKey) phaseAccByResult[phase][resultKey].push(hm);
       }
     }
 
-    // Overall accuracy for this game (harmonic mean of all move accuracies)
+    // Overall accuracy for this game (winsorized harmonic mean, same as gameAccuracy)
     if (allMoveAccs.length > 0) {
-      const gameHm = harmonicMean(allMoveAccs);
+      const capped = allMoveAccs.map((v) => Math.max(v, 24));
+      const gameHm = harmonicMean(capped);
       overallGameAccuracies.push(gameHm);
       if (playerIsWhite) {
         whiteGameAccuracies.push(gameHm);
@@ -1229,6 +1456,26 @@ export function computeArenaStats(
         : null,
       endgame: phaseBestMoveTotal.endgame > 0
         ? round1((phaseBestMoveHits.endgame / phaseBestMoveTotal.endgame) * 100)
+        : null,
+    },
+    phaseBestMoveRateVsExpected: {
+      opening: phaseBestMoveTotal.opening > 0
+        ? round1(
+            (phaseBestMoveHits.opening / phaseBestMoveTotal.opening) * 100
+            - interpolateCurve(EXPECTED_OPENING_BEST_MOVE_RATE_CURVE, chessRating)
+          )
+        : null,
+      middlegame: phaseBestMoveTotal.middlegame > 0
+        ? round1(
+            (phaseBestMoveHits.middlegame / phaseBestMoveTotal.middlegame) * 100
+            - interpolateCurve(EXPECTED_MIDDLEGAME_BEST_MOVE_RATE_CURVE, chessRating)
+          )
+        : null,
+      endgame: phaseBestMoveTotal.endgame > 0
+        ? round1(
+            (phaseBestMoveHits.endgame / phaseBestMoveTotal.endgame) * 100
+            - interpolateCurve(EXPECTED_ENDGAME_BEST_MOVE_RATE_CURVE, chessRating)
+          )
         : null,
     },
     phaseAccuracyByResult: (() => {

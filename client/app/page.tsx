@@ -17,6 +17,8 @@ interface TargetStatsData {
   targetTier: string;
   targetShiny: boolean;
   expectedPhaseAccuracy: { opening: number; middlegame: number; endgame: number };
+  expectedBestMoveRate: { opening: number; middlegame: number; endgame: number };
+  expectedCategoryStats: Record<string, number>;
 }
 
 interface StatsData {
@@ -128,7 +130,7 @@ export default function Home() {
   }, [queriedUser, activeIndex, cards]);
 
   // ── Cache helpers ──
-  const CACHE_KEY = (user: string) => `arena_cache_${user.toLowerCase()}`;
+  const CACHE_KEY = (user: string) => `arena_cache_v2_${user.toLowerCase()}`;
   const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
   function saveToCache(user: string, data: { cards: CardData[]; stats: StatsData; profile: ProfileData; games: GameData[] }) {
@@ -578,7 +580,7 @@ export default function Home() {
             const catKeys = ["attacking", "defending", "tactics", "positional", "opening", "endgame"] as const;
             const cats = {} as ArenaStatsData["categories"];
             for (const key of catKeys) {
-              cats[key] = { stat: tRating, percentage: 0, successRate: 0 };
+              cats[key] = { stat: targetStats.expectedCategoryStats?.[key] ?? tRating, percentage: 0, successRate: 0 };
             }
             return {
               arenaRating: tRating,
@@ -599,9 +601,10 @@ export default function Home() {
           const buildStatDiffs = () => {
             if (!targetStats || !currentCategories) return undefined;
             const tRating = targetStats.targetArenaRating;
+            const expectedCats = targetStats.expectedCategoryStats;
             const form = activeCard?.arenaStats.form ?? 0;
             const catDiff = (key: keyof typeof currentCategories) =>
-              tRating - ((currentCategories[key]?.stat ?? currentArena) + form);
+              (expectedCats?.[key] ?? tRating) - ((currentCategories[key]?.stat ?? currentArena) + form);
             return {
               overall: tRating - (currentArena + form),
               attacking: catDiff("attacking"),
@@ -1051,6 +1054,7 @@ export default function Home() {
               const phaseAccuracy = cards[activeIndex]?.arenaStats?.phaseAccuracy;
               const phaseAccVsExpected = cards[activeIndex]?.arenaStats?.phaseAccuracyVsExpected;
               const phaseBestMove = cards[activeIndex]?.arenaStats?.phaseBestMoveRate;
+              const phaseBestMoveVsExpected = cards[activeIndex]?.arenaStats?.phaseBestMoveRateVsExpected;
               const phaseByResult = cards[activeIndex]?.arenaStats?.phaseAccuracyByResult;
               const phaseBlunder = cards[activeIndex]?.arenaStats?.phaseBlunderRate;
               const hasTarget = targetStats != null;
@@ -1118,7 +1122,14 @@ export default function Home() {
                     return { text: `${expected.toFixed(1)}%`, color: "#9b9895" };
                   }
                 }
-                // Only accuracy has rating-range data for now
+                if (metric === "Best Move Rate") {
+                  const bmr = phaseBestMove?.[cat.accKey];
+                  const vsExpected = phaseBestMoveVsExpected?.[cat.accKey];
+                  if (bmr != null && vsExpected != null) {
+                    const expected = +(bmr - vsExpected).toFixed(1);
+                    return { text: `${expected.toFixed(1)}%`, color: "#9b9895" };
+                  }
+                }
                 return { text: "\u2014", color: "#4a4745" };
               };
 
@@ -1129,7 +1140,10 @@ export default function Home() {
                   const val = targetStats.expectedPhaseAccuracy[cat.accKey];
                   return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
                 }
-                // Only accuracy has target data for now
+                if (metric === "Best Move Rate") {
+                  const val = targetStats.expectedBestMoveRate?.[cat.accKey];
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
+                }
                 return { text: "\u2014", color: "#4a4745" };
               };
 
@@ -1441,7 +1455,7 @@ export default function Home() {
                     Puzzles from your games.
                   </h2>
                   <p style={{ fontSize: 14, fontWeight: 600, color: "#9b9895", lineHeight: 1.75, marginBottom: 0 }}>
-                    Every puzzle is a position where you missed the best move. Tagged by category and motif.
+                    Every puzzle is generated from your own games. Train different categories and see exactly where you went wrong. Share your puzzle database with a coach to target your weaknesses together.
                   </p>
                 </div>
                 <div style={{ display: "flex", justifyContent: "center" }}>
@@ -1489,7 +1503,7 @@ export default function Home() {
                       }}
                     >
                       <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>grandmother69</span>
-                      <span style={{ fontSize: 11, color: "#a09d9a" }}>(1580)</span>
+                      <span style={{ fontSize: 11, color: "#a09d9a" }}>(1830)</span>
                     </div>
                     <div style={{
                       width: 300,
@@ -1506,56 +1520,322 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Feature — Player Card */}
+              {/* Feature — Arena Simulation Game */}
               <div style={{ backgroundColor: "#1c1b19", borderRadius: 16, border: "1px solid #3d3a37", padding: "40px 44px", marginBottom: 32 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 56, flexWrap: "wrap", justifyContent: "center" }}>
-                <div className="text-center" style={{ width: "100%", marginBottom: 8 }}>
+                <div className="text-center" style={{ width: "100%", marginBottom: 24 }}>
                   <p className="font-extrabold" style={{ fontSize: 12, color: "#81b64c", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>
-                    Generate Your Player Card
+                    Arena Simulation Game
                   </p>
                   <h2 className="font-extrabold" style={{ fontSize: 28, color: "#fff", marginBottom: 6, lineHeight: 1.3 }}>
-                    Your stats. One card.
+                    Simulate games against anyone.
                   </h2>
                   <p style={{ fontSize: 14, fontWeight: 600, color: "#9b9895", lineHeight: 1.75, marginBottom: 0 }}>
-                    Six skill categories built from your real games, rated against players in your range.
+                    Practice playing against your friends, yourself or anyone else with data pulled from real games.
                   </p>
                 </div>
-                <div style={{ pointerEvents: "none", flexShrink: 0 }}>
-                  <PlayerCard
-                    username="chesswithakeem"
-                    avatarUrl="https://images.chesscomfiles.com/uploads/v1/user/89523040.0341f1a9.200x200o.0996111c0eec.jpeg"
-                    countryCode="JM"
-                    timeControl="blitz"
-                    chessRating={2721}
-                    peakRating={2721}
-                    arenaStats={{
-                      arenaRating: 89,
-                      tier: "gold",
-                      shiny: true,
-                      categories: {
-                        attacking: { stat: 90, percentage: 15.31, successRate: 56.93 },
-                        defending: { stat: 85, percentage: 19.38, successRate: 59.29 },
-                        tactics: { stat: 91, percentage: 29.61, successRate: 86.04 },
-                        positional: { stat: 85, percentage: 37.93, successRate: 85.39 },
-                        opening: { stat: 86, percentage: 29.92, successRate: 43.09 },
-                        endgame: { stat: 83, percentage: 34.10, successRate: 26.09 },
-                      },
-                      form: 0,
-                      backStats: {
-                        accuracyOverall: 81.48,
-                        accuracyWhite: 82.65,
-                        accuracyBlack: 80.31,
-                        blunderRate: 6.12,
-                        missedWinRate: 2.61,
-                        missedSaveRate: 3.34,
-                      },
-                      phaseAccuracy: { opening: null, middlegame: null, endgame: null },
-                      gamesAnalyzed: 40,
-                      record: { wins: 154, draws: 20, losses: 166 },
-                    }}
-                  />
+                {/* Board + Cards row */}
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 28 }}>
+                  {/* Left: Board with player bars */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, flexShrink: 0 }}>
+                    {/* Top player bar — MagnusCarlsen (black) */}
+                    <div
+                      style={{
+                        width: 340,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 12px",
+                        backgroundColor: "#272522",
+                        borderRadius: "8px 8px 0 0",
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#f0d9b5" }}>GM</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>MagnusCarlsen</span>
+                      <span style={{ fontSize: 11, color: "#a09d9a" }}>(2525)</span>
+                      <span style={{ fontSize: 13, color: "#d1cfcc", marginLeft: 2 }}>{"\u265A"}</span>
+                    </div>
+                    {/* Board */}
+                    <div style={{ width: 340, height: 340, overflow: "hidden" }}>
+                      {mounted ? (
+                        <Chessboard
+                          options={{
+                            position: "r1bq1rk1/pp2ppbp/2np1np1/8/2BNP3/2N1B3/PPP2PPP/R2QK2R w KQ - 0 9",
+                            boardOrientation: "white",
+                            allowDragging: false,
+                            darkSquareStyle: { backgroundColor: "#6596EB" },
+                            lightSquareStyle: { backgroundColor: "#EAF1F8" },
+                          }}
+                        />
+                      ) : (
+                        <div style={{ width: 340, height: 340, backgroundColor: "#272522" }} />
+                      )}
+                    </div>
+                    {/* Bottom player bar — grandmother69 (white) */}
+                    <div
+                      style={{
+                        width: 340,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 12px",
+                        backgroundColor: "#272522",
+                        borderRadius: "0 0 8px 8px",
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>grandmother69</span>
+                      <span style={{ fontSize: 11, color: "#a09d9a" }}>(1830)</span>
+                    </div>
+                  </div>
+
+                  {/* Right: Two cards side by side with VS */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+                    {/* grandmother69 card — silver */}
+                    <div style={{ pointerEvents: "none" }}>
+                      <PlayerCard
+                        username="grandmother69"
+                        avatarUrl="https://images.chesscomfiles.com/uploads/v1/user/175872113.17bac7ee.200x200o.121a672805c7.jpg"
+                        countryCode="SE"
+                        timeControl="rapid"
+                        chessRating={1830}
+                        peakRating={1830}
+                        arenaStats={{
+                          arenaRating: 76,
+                          tier: "silver",
+                          shiny: true,
+                          categories: {
+                            attacking: { stat: 78, percentage: 14.2, successRate: 55.1 },
+                            defending: { stat: 74, percentage: 18.5, successRate: 58.2 },
+                            tactics: { stat: 79, percentage: 28.7, successRate: 84.1 },
+                            positional: { stat: 75, percentage: 36.1, successRate: 80.4 },
+                            opening: { stat: 73, percentage: 30.8, successRate: 59.3 },
+                            endgame: { stat: 77, percentage: 32.4, successRate: 49.8 },
+                          },
+                          form: 1,
+                          backStats: {
+                            accuracyOverall: 76.2, accuracyWhite: 77.1, accuracyBlack: 75.3,
+                            blunderRate: 8.4, missedWinRate: 3.8, missedSaveRate: 4.5,
+                          },
+                          phaseAccuracy: { opening: null, middlegame: null, endgame: null },
+                          gamesAnalyzed: 40,
+                          record: { wins: 82, draws: 15, losses: 63 },
+                        }}
+                      />
+                    </div>
+                    {/* VS */}
+                    <span style={{ fontSize: 20, fontWeight: 900, color: "#6b6966", letterSpacing: 2 }}>VS</span>
+                    {/* Empty opponent card with username input */}
+                    <div style={{
+                      width: 240,
+                      height: 360,
+                      borderRadius: 16,
+                      border: "2px dashed #4a4745",
+                      backgroundColor: "#2a2825",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 14,
+                    }}>
+                      <div style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: "50%",
+                        backgroundColor: "#3d3a37",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 24,
+                        color: "#9b9895",
+                      }}>
+                        ?
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#9b9895", textTransform: "uppercase", letterSpacing: 1 }}>
+                        Choose Opponent
+                      </span>
+                      <div style={{
+                        width: "75%",
+                        padding: "9px 14px",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        borderRadius: 8,
+                        backgroundColor: "#1c1b19",
+                        color: "#6b6966",
+                        textAlign: "center",
+                      }}>
+                        username...
+                      </div>
+                      <div style={{
+                        width: "75%",
+                        padding: "8px",
+                        fontSize: 13,
+                        fontWeight: 800,
+                        borderRadius: 8,
+                        backgroundColor: "#81b64c",
+                        color: "#fff",
+                        textAlign: "center",
+                      }}>
+                        Play
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
+
+              {/* Feature — Know Yourself */}
+              <div style={{ backgroundColor: "#1c1b19", borderRadius: 16, border: "1px solid #3d3a37", padding: "40px 44px", marginBottom: 32 }}>
+                <div className="text-center" style={{ width: "100%", marginBottom: 28 }}>
+                  <p className="font-extrabold" style={{ fontSize: 12, color: "#81b64c", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>
+                    Deep Analysis
+                  </p>
+                  <h2 className="font-extrabold" style={{ fontSize: 28, color: "#fff", marginBottom: 6, lineHeight: 1.3 }}>
+                    Know yourself as a chess player.
+                  </h2>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "#9b9895", lineHeight: 1.75, marginBottom: 0 }}>
+                    Every game you play is analyzed by Stockfish and broken down into six skill categories. See where you excel and where you need work.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: 36, alignItems: "start", justifyContent: "center" }}>
+                  {/* Left: Player Card */}
+                  <div style={{ pointerEvents: "none", flexShrink: 0 }}>
+                    <PlayerCard
+                      username="grandmother69"
+                      avatarUrl="https://images.chesscomfiles.com/uploads/v1/user/175872113.17bac7ee.200x200o.121a672805c7.jpg"
+                      countryCode="SE"
+                      timeControl="rapid"
+                      chessRating={1830}
+                      peakRating={1830}
+                      arenaStats={{
+                        arenaRating: 76,
+                        tier: "silver",
+                        shiny: true,
+                        categories: {
+                          attacking: { stat: 78, percentage: 14.2, successRate: 55.1 },
+                          defending: { stat: 74, percentage: 18.5, successRate: 58.2 },
+                          tactics: { stat: 79, percentage: 28.7, successRate: 84.1 },
+                          positional: { stat: 75, percentage: 36.1, successRate: 80.4 },
+                          opening: { stat: 73, percentage: 30.8, successRate: 59.3 },
+                          endgame: { stat: 77, percentage: 32.4, successRate: 49.8 },
+                        },
+                        form: 1,
+                        backStats: {
+                          accuracyOverall: 76.2,
+                          accuracyWhite: 77.1,
+                          accuracyBlack: 75.3,
+                          blunderRate: 8.4,
+                          missedWinRate: 3.8,
+                          missedSaveRate: 4.5,
+                        },
+                        phaseAccuracy: { opening: null, middlegame: null, endgame: null },
+                        gamesAnalyzed: 40,
+                        record: { wins: 82, draws: 15, losses: 63 },
+                      }}
+                    />
+                  </div>
+
+                  {/* Right: Metrics + Graph + Description */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Accuracy metrics row */}
+                    <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+                      {[
+                        { label: "Accuracy", value: "76.2%", color: "#81b64c" },
+                        { label: "Blunder Rate", value: "8.4%", color: "#e05252" },
+                        { label: "Missed Wins", value: "3.8%", color: "#c27a30" },
+                      ].map((m) => (
+                        <div key={m.label} style={{
+                          flex: 1,
+                          backgroundColor: "#272522",
+                          borderRadius: 10,
+                          padding: "12px 14px",
+                          textAlign: "center",
+                        }}>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: "#6b6966", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>{m.label}</p>
+                          <p style={{ fontSize: 20, fontWeight: 900, color: m.color, margin: 0 }}>{m.value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Accuracy graph mockup */}
+                    <div style={{
+                      backgroundColor: "#272522",
+                      borderRadius: 10,
+                      padding: "14px 16px 10px",
+                      marginBottom: 16,
+                    }}>
+                      <p style={{ fontSize: 10, fontWeight: 700, color: "#6b6966", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>Accuracy by Game</p>
+                      <svg width="100%" height="80" viewBox="0 0 320 80" preserveAspectRatio="none">
+                        {/* Grid lines */}
+                        {[0, 20, 40, 60].map((y) => (
+                          <line key={y} x1="0" y1={y} x2="320" y2={y} stroke="#3a3733" strokeWidth="0.5" />
+                        ))}
+                        {/* Win dots (green) */}
+                        {[
+                          [10,18],[30,22],[60,15],[90,25],[110,12],[150,20],[180,28],[220,16],[260,10],[290,24],
+                          [40,30],[130,14],[200,22],[240,18],[310,20],
+                        ].map(([x,y], i) => (
+                          <circle key={`w${i}`} cx={x} cy={y} r="3" fill="#81b64c" opacity="0.8" />
+                        ))}
+                        {/* Loss dots (red) */}
+                        {[
+                          [20,52],[50,48],[80,55],[120,45],[170,58],[210,50],[250,42],[280,60],
+                        ].map(([x,y], i) => (
+                          <circle key={`l${i}`} cx={x} cy={y} r="3" fill="#e05252" opacity="0.8" />
+                        ))}
+                        {/* Draw dots (yellow) */}
+                        {[
+                          [70,35],[160,38],[230,32],[300,36],
+                        ].map(([x,y], i) => (
+                          <circle key={`d${i}`} cx={x} cy={y} r="3" fill="#c27a30" opacity="0.8" />
+                        ))}
+                        {/* Trend line */}
+                        <polyline
+                          points="10,32 50,35 90,30 130,28 170,33 210,29 250,26 290,28"
+                          fill="none"
+                          stroke="#f0d9b5"
+                          strokeWidth="1.5"
+                          opacity="0.6"
+                        />
+                      </svg>
+                      <div style={{ display: "flex", gap: 14, justifyContent: "center", marginTop: 6 }}>
+                        {[
+                          { label: "Win", color: "#81b64c" },
+                          { label: "Loss", color: "#e05252" },
+                          { label: "Draw", color: "#c27a30" },
+                        ].map((l) => (
+                          <span key={l.label} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#6b6966" }}>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: l.color, display: "inline-block" }} />
+                            {l.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Phase accuracy panels */}
+                    <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+                      {[
+                        { phase: "Opening", acc: "85.7%", color: "#a37acc" },
+                        { phase: "Middlegame", acc: "72.3%", color: "#c46d8e" },
+                        { phase: "Endgame", acc: "78.6%", color: "#d4a84b" },
+                      ].map((p) => (
+                        <div key={p.phase} style={{
+                          flex: 1,
+                          backgroundColor: "#272522",
+                          borderRadius: 10,
+                          padding: "10px 12px",
+                          textAlign: "center",
+                        }}>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: p.color, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>{p.phase}</p>
+                          <p style={{ fontSize: 16, fontWeight: 900, color: "#fff", margin: 0 }}>{p.acc}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Description */}
+                    <p style={{ fontSize: 13, fontWeight: 600, color: "#9b9895", lineHeight: 1.75, margin: 0 }}>
+                      Dive into deep analysis of your game. Discover your strengths, compare yourself to your peers, and set a target rating to see how players perform at the level you're aiming for.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* Feature 2 — Card Progression */}
@@ -1654,16 +1934,66 @@ export default function Home() {
                           record: { wins: 154, draws: 20, losses: 166 },
                         }}
                         statDiffs={{
-                          overall: 6,
-                          attacking: 8,
-                          defending: 2,
-                          tactics: 3,
-                          positional: 5,
-                          opening: 6,
-                          endgame: 6,
+                          overall: -6,
+                          attacking: -8,
+                          defending: -2,
+                          tactics: -3,
+                          positional: -5,
+                          opening: -6,
+                          endgame: -6,
                         }}
                       />
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Feature — Find a Chess Coach */}
+              <div style={{ backgroundColor: "#1c1b19", borderRadius: 16, border: "1px solid #3d3a37", padding: "40px 44px", marginBottom: 32 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
+                  {/* Left: Coach avatar + info */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 16, flex: 1 }}>
+                    <img
+                      src="https://images.chesscomfiles.com/uploads/v1/user/89523040.0341f1a9.200x200o.0996111c0eec.jpeg"
+                      alt="Chess Coach"
+                      style={{ width: 64, height: 64, borderRadius: 12, objectFit: "cover", flexShrink: 0 }}
+                    />
+                    <div>
+                      <p className="font-extrabold" style={{ fontSize: 12, color: "#81b64c", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>
+                        Find a Chess Coach
+                      </p>
+                      <h2 className="font-extrabold" style={{ fontSize: 22, color: "#fff", marginBottom: 4, lineHeight: 1.3 }}>
+                        Take your game to the next level.
+                      </h2>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "#9b9895", lineHeight: 1.7, marginBottom: 0 }}>
+                        Work with a trusted coach who can review your puzzle database and target your weaknesses directly.
+                      </p>
+                    </div>
+                  </div>
+                  {/* Right: Stars + CTA */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, flexShrink: 0 }}>
+                    <div style={{ display: "flex", gap: 2 }}>
+                      {Array.from({ length: 5 }, (_, i) => (
+                        <svg key={i} width="18" height="18" viewBox="0 0 24 24" fill="#f0d9b5" stroke="#f0d9b5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                        </svg>
+                      ))}
+                    </div>
+                    <a
+                      href="/coach"
+                      style={{
+                        padding: "10px 28px",
+                        fontSize: 14,
+                        fontWeight: 800,
+                        borderRadius: 8,
+                        backgroundColor: "#81b64c",
+                        color: "#fff",
+                        textDecoration: "none",
+                        transition: "background-color 0.2s ease",
+                      }}
+                    >
+                      Browse Coaches
+                    </a>
                   </div>
                 </div>
               </div>

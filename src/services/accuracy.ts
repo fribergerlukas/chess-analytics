@@ -2,13 +2,13 @@ import { Side } from "@prisma/client";
 import prisma from "../lib/prisma";
 
 export function cpToWinPercent(cp: number): number {
-  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+  return 50 + 50 * (2 / (1 + Math.exp(-0.0025 * cp)) - 1);
 }
 
 export function moveAccuracy(winBefore: number, winAfter: number): number {
   if (winAfter >= winBefore) return 100;
   const diff = winBefore - winAfter;
-  const raw = 103.1668 * Math.exp(-0.04354 * diff) - 3.1669 + 1;
+  const raw = 103.1668 * Math.exp(-0.095 * diff) - 3.1669 + 1;
   return Math.max(0, Math.min(100, raw));
 }
 
@@ -30,38 +30,15 @@ export function harmonicMean(values: number[]): number {
 
 export function gameAccuracy(
   moveAccuracies: number[],
-  winPercents: number[]
+  _winPercents?: number[]
 ): number {
   if (moveAccuracies.length === 0) return 0;
 
-  const numMoves = moveAccuracies.length;
-  const windowSize = Math.max(2, Math.min(8, Math.floor(numMoves / 10)));
-
-  // Compute volatility-weighted mean
-  let weightedSum = 0;
-  let totalWeight = 0;
-
-  for (let i = 0; i <= winPercents.length - windowSize; i++) {
-    const window = winPercents.slice(i, i + windowSize);
-    const vol = Math.max(0.5, Math.min(12, stddev(window)));
-
-    // Each move in this window gets weighted by volatility
-    for (let j = i; j < i + windowSize && j < moveAccuracies.length; j++) {
-      weightedSum += moveAccuracies[j] * vol;
-      totalWeight += vol;
-    }
-  }
-
-  // Handle case where window doesn't cover all moves
-  if (totalWeight === 0) {
-    weightedSum = moveAccuracies.reduce((a, b) => a + b, 0);
-    totalWeight = moveAccuracies.length;
-  }
-
-  const volatilityWeightedMean = weightedSum / totalWeight;
-  const hMean = harmonicMean(moveAccuracies);
-
-  return (volatilityWeightedMean + hMean) / 2;
+  // Winsorized harmonic mean: cap outlier moves at a floor before computing
+  // harmonic mean, so a single terrible move doesn't destroy the score.
+  const floor = 24;
+  const capped = moveAccuracies.map((v) => Math.max(v, floor));
+  return harmonicMean(capped);
 }
 
 export async function computeGameAccuracy(
@@ -77,9 +54,6 @@ export async function computeGameAccuracy(
 
   const whiteMoveAccuracies: number[] = [];
   const blackMoveAccuracies: number[] = [];
-  // Win% sequences for volatility calc, starting with initial 50%
-  const whiteWinPercents: number[] = [50];
-  const blackWinPercents: number[] = [50];
 
   for (let i = 0; i < positions.length - 1; i++) {
     const curr = positions[i];
@@ -91,24 +65,20 @@ export async function computeGameAccuracy(
       const winBefore = cpToWinPercent(currEval);
       const winAfter = cpToWinPercent(nextEval);
       whiteMoveAccuracies.push(moveAccuracy(winBefore, winAfter));
-      whiteWinPercents.push(winAfter);
     } else {
       const winBefore = cpToWinPercent(-currEval);
       const winAfter = cpToWinPercent(-nextEval);
       blackMoveAccuracies.push(moveAccuracy(winBefore, winAfter));
-      blackWinPercents.push(winAfter);
     }
   }
 
   const white =
     whiteMoveAccuracies.length > 0
-      ? Math.round(gameAccuracy(whiteMoveAccuracies, whiteWinPercents) * 100) /
-        100
+      ? Math.round(gameAccuracy(whiteMoveAccuracies) * 100) / 100
       : null;
   const black =
     blackMoveAccuracies.length > 0
-      ? Math.round(gameAccuracy(blackMoveAccuracies, blackWinPercents) * 100) /
-        100
+      ? Math.round(gameAccuracy(blackMoveAccuracies) * 100) / 100
       : null;
 
   await prisma.game.update({
