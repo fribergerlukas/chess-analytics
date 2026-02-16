@@ -1,7 +1,7 @@
 import { Side } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { analyzePv } from "./puzzlePv";
-import { classifyPuzzle } from "./puzzleClassification";
+import { classifyPuzzle, ClassificationContext } from "./puzzleClassification";
 
 const MISTAKE_THRESHOLD = 150;
 
@@ -33,6 +33,10 @@ function getUserSide(pgn: string, username: string): Side | null {
  * - The side to move matches the user's side in the game
  * - No puzzle already exists for this user+position
  *
+ * Fetches ALL evaluated positions for the game so that classification
+ * can use surrounding evals (pressure swing, eval trend) for richer
+ * defending detection.
+ *
  * Returns the number of puzzles created.
  */
 export async function generateGamePuzzles(
@@ -40,16 +44,12 @@ export async function generateGamePuzzles(
   userId: number,
   userSide?: Side
 ): Promise<number> {
-  const positions = await prisma.position.findMany({
-    where: {
-      gameId,
-      eval: { not: null },
-      cpLoss: { gte: MISTAKE_THRESHOLD },
-      bestMoveUci: { not: null },
-      ...(userSide ? { sideToMove: userSide } : {}),
-    },
+  // Fetch ALL evaluated positions for game context (eval trajectory)
+  const allPositions = await prisma.position.findMany({
+    where: { gameId, eval: { not: null } },
     select: {
       id: true,
+      ply: true,
       fen: true,
       moveUci: true,
       sideToMove: true,
@@ -61,20 +61,31 @@ export async function generateGamePuzzles(
     orderBy: { ply: "asc" },
   });
 
+  // Index by ply for quick context lookup
+  const evalByPly = new Map<number, number>();
+  for (const p of allPositions) {
+    if (p.eval != null) evalByPly.set(p.ply, p.eval);
+  }
+
+  // Filter for mistake positions
+  const mistakes = allPositions.filter(
+    (p) =>
+      p.cpLoss != null &&
+      p.cpLoss >= MISTAKE_THRESHOLD &&
+      p.bestMoveUci != null &&
+      p.moveUci !== p.bestMoveUci &&
+      (!userSide || p.sideToMove === userSide)
+  );
+
   let created = 0;
 
-  for (const pos of positions) {
-    // Skip if the played move IS the best move
-    if (pos.moveUci === pos.bestMoveUci) continue;
-
+  for (const pos of mistakes) {
     // Skip if puzzle already exists for this user+position
     const existing = await prisma.puzzle.findUnique({
       where: { userId_positionId: { userId, positionId: pos.id } },
     });
     if (existing) continue;
 
-    // evalBefore is the eval at this position (from white's perspective)
-    // evalAfter is evalBefore minus the cpLoss (the position after the mistake)
     const evalBeforeCp = pos.eval != null ? Math.round(pos.eval) : null;
     const evalAfterCp =
       evalBeforeCp != null && pos.cpLoss != null
@@ -89,15 +100,22 @@ export async function generateGamePuzzles(
 
     const pvResult = analyzePv(pos.fen, pos.pv || "", evalBeforeCp);
 
-    // Three-axis classification: category (why), severity (how bad), labels (what)
-    const classification = classifyPuzzle(
+    // Build enriched context with surrounding evals for defending detection
+    const prevEval = evalByPly.get(pos.ply - 1);
+    const prevPrevEval = evalByPly.get(pos.ply - 2);
+
+    const ctx: ClassificationContext = {
       evalBeforeCp,
       evalAfterCp,
-      pos.sideToMove,
-      pos.fen,
-      pos.bestMoveUci!,
-      pvResult.pvMoves
-    );
+      sideToMove: pos.sideToMove,
+      fen: pos.fen,
+      bestMoveUci: pos.bestMoveUci!,
+      pvMoves: pvResult.pvMoves,
+      prevEvalCp: prevEval ?? null,
+      prevPrevEvalCp: prevPrevEval ?? null,
+    };
+
+    const classification = classifyPuzzle(ctx);
 
     await prisma.puzzle.create({
       data: {

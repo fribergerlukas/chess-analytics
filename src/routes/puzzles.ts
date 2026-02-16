@@ -21,7 +21,7 @@ function str(val: unknown): string {
  *   timeCategory — "bullet" | "blitz" | "rapid" (filter by game time control)
  *   rated        — "true" | "false" (filter by rated/unrated; omit for all)
  *   minMoves     — minimum required user moves (default 1; use 2 for multi-move only)
- *   category     — "resilience" | "capitalization" (filter by puzzle category)
+ *   category     — "defending" | "attacking" | "tactics" | "positional" (filter by puzzle category)
  *   maxEvalBefore — max cp deficit before the move (default 300, filters hopeless positions)
  */
 router.get(

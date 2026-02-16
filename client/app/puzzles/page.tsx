@@ -35,10 +35,15 @@ interface PuzzleData {
 
 // Category display config: label, background color, text color
 const CATEGORY_DISPLAY: Record<string, { label: string; bg: string; fg: string }> = {
-  resilience:                { label: "Resilience",   bg: "#1a2d3b", fg: "#5ba3d9" },
-  advantage_capitalisation:  { label: "Capitalize",   bg: "#3b3520", fg: "#c27a30" },
-  opportunity_creation:      { label: "Opportunity",  bg: "#1a3b2d", fg: "#5bd98a" },
-  precision_only_move:       { label: "Precision",    bg: "#3b1a3b", fg: "#d95bd9" },
+  defending:   { label: "Defending",   bg: "#1a2d3b", fg: "#5ba3d9" },
+  attacking:   { label: "Attacking",   bg: "#3b3520", fg: "#c27a30" },
+  tactics:     { label: "Tactics",     bg: "#1a3b2d", fg: "#5bd98a" },
+  positional:  { label: "Positional",  bg: "#3b1a3b", fg: "#d95bd9" },
+  // Legacy names (existing DB records)
+  resilience:                { label: "Defending",   bg: "#1a2d3b", fg: "#5ba3d9" },
+  advantage_capitalisation:  { label: "Attacking",   bg: "#3b3520", fg: "#c27a30" },
+  opportunity_creation:      { label: "Tactics",     bg: "#1a3b2d", fg: "#5bd98a" },
+  precision_only_move:       { label: "Positional",  bg: "#3b1a3b", fg: "#d95bd9" },
 };
 
 const SEVERITY_DISPLAY: Record<string, { label: string; bg: string; fg: string }> = {
