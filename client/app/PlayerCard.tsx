@@ -18,7 +18,7 @@ export interface ArenaStatsData {
     attacking: CategoryStat;
     defending: CategoryStat;
     tactics: CategoryStat;
-    positional: CategoryStat;
+    strategic: CategoryStat;
     opening: CategoryStat;
     endgame: CategoryStat;
   };
@@ -61,6 +61,41 @@ export interface ArenaStatsData {
     middlegame: number | null;
     endgame: number | null;
   };
+  phaseMedianAccuracy?: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
+  phaseMissedWinRate?: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
+  phaseMissedSaveRate?: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
+  phaseBlunderRateVsExpected?: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
+  phaseMissedWinRateVsExpected?: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
+  phaseMissedSaveRateVsExpected?: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
+  phaseAccuracyByResultVsExpected?: {
+    opening: { wins: number | null; draws: number | null; losses: number | null };
+    middlegame: { wins: number | null; draws: number | null; losses: number | null };
+    endgame: { wins: number | null; draws: number | null; losses: number | null };
+  };
   gamesAnalyzed: number;
   record?: { wins: number; draws: number; losses: number };
 }
@@ -79,6 +114,9 @@ interface PlayerCardProps {
   editableRating?: boolean;
   onRatingChange?: (rating: number) => void;
   ratingPlaceholder?: string;
+  onStatHover?: (statKey: string | null) => void;
+  highlightedStat?: string | null;
+  showTargetLabel?: boolean;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -135,6 +173,15 @@ const TIER_STYLES_MATTE: Record<Tier, TierStyle> = {
   },
 };
 
+// Puzzle category fg colors for highlight pills (matches CATEGORY_DISPLAY in puzzles page)
+const CATEGORY_DISPLAY_COLORS: Record<string, string> = {
+  defending: "#5ba3d9",
+  attacking: "#c27a30",
+  tactics: "#5bd98a",
+  endgame: "#d9c75b",
+  strategic: "#d95bd9",
+};
+
 const TC_ICONS: Record<string, string> = {
   bullet: "\u26A1",
   blitz: "\uD83D\uDD25",
@@ -145,12 +192,30 @@ const STAT_LABELS: { key: keyof ArenaStatsData["categories"]; label: string }[] 
   { key: "attacking", label: "ATK" },
   { key: "defending", label: "DEF" },
   { key: "tactics", label: "TAC" },
-  { key: "positional", label: "STR" },
+  { key: "strategic", label: "STR" },
   { key: "opening", label: "OPN" },
   { key: "endgame", label: "END" },
 ];
 
 // ── Component ──────────────────────────────────────────────────────────
+
+// Map card stat keys to puzzle category keys (null = no puzzle equivalent)
+export const CARD_STAT_TO_PUZZLE: Record<string, string | null> = {
+  attacking: "attacking",
+  defending: "defending",
+  tactics: "tactics",
+  strategic: "strategic",
+  endgame: "endgame",
+  opening: null,
+};
+
+export const PUZZLE_TO_CARD_STAT: Record<string, string> = {
+  attacking: "attacking",
+  defending: "defending",
+  tactics: "tactics",
+  strategic: "strategic",
+  endgame: "endgame",
+};
 
 export default function PlayerCard({
   username,
@@ -166,9 +231,16 @@ export default function PlayerCard({
   editableRating,
   onRatingChange,
   ratingPlaceholder,
+  onStatHover,
+  highlightedStat,
+  showTargetLabel,
 }: PlayerCardProps) {
   const [flipped, setFlipped] = useState(false);
-  const { tier, shiny, arenaRating, categories, form, backStats, gamesAnalyzed, record } = arenaStats;
+  const { tier, shiny, arenaRating, form, backStats, gamesAnalyzed, record } = arenaStats;
+  // Normalize: accept both old "positional" and new "strategic" key from API
+  const categories = arenaStats.categories.strategic
+    ? arenaStats.categories
+    : { ...arenaStats.categories, strategic: (arenaStats.categories as any).positional ?? { stat: arenaRating, percentage: 0, successRate: 0 } };
   const style = shiny ? TIER_STYLES_SHINY[tier] : TIER_STYLES_MATTE[tier];
 
   const flagUrl = countryCode
@@ -180,7 +252,7 @@ export default function PlayerCard({
 
   // Apply form modifier to displayed stats
   const displayStat = (key: keyof typeof categories) => {
-    return categories[key].stat + form;
+    return (categories[key]?.stat ?? arenaRating) + form;
   };
 
   const formLabel = form > 0 ? `+${form}` : form < 0 ? `${form}` : "0";
@@ -277,8 +349,8 @@ export default function PlayerCard({
             </div>
           )}
 
-          {/* Target label — only on editable (target) cards */}
-          {editableRating && (
+          {/* Target label — on editable or explicitly labeled target cards */}
+          {(editableRating || showTargetLabel) && (
             <div style={{
               textAlign: "center",
               paddingTop: 4,
@@ -503,14 +575,23 @@ export default function PlayerCard({
                   paddingRight: 8,
                 }}
               >
-                {leftStats.map((s) => (
+                {leftStats.map((s) => {
+                  const isHighlighted = highlightedStat === s.key;
+                  const hasPuzzleMapping = CARD_STAT_TO_PUZZLE[s.key] !== null;
+                  const anotherHighlighted = highlightedStat != null && !isHighlighted;
+                  const dimmed = anotherHighlighted && !hasPuzzleMapping;
+                  return (
                   <div
                     key={s.key}
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
+                      opacity: dimmed ? 0.5 : 1,
+                      transition: "opacity 0.15s ease",
                     }}
+                    onMouseEnter={() => onStatHover?.(s.key)}
+                    onMouseLeave={() => onStatHover?.(null)}
                   >
                     {(() => {
                       const diff = statDiffs?.[s.key as keyof typeof statDiffs] as number | undefined;
@@ -531,9 +612,12 @@ export default function PlayerCard({
                               fontWeight: 900,
                               color: statColor,
                               minWidth: 22,
-                              backgroundColor: hasDiff ? (brightBg ? "#000000b0" : "#00000070") : undefined,
+                              backgroundColor: isHighlighted && !hasDiff
+                                ? (CATEGORY_DISPLAY_COLORS[CARD_STAT_TO_PUZZLE[s.key] || ""] || "#ffffff") + "40"
+                                : hasDiff ? (brightBg ? "#000000b0" : "#00000070") : undefined,
                               borderRadius: 4,
-                              padding: hasDiff ? "1px 5px" : undefined,
+                              padding: isHighlighted || hasDiff ? "1px 5px" : undefined,
+                              transition: "background-color 0.15s ease",
                             }}
                           >
                             {displayStat(s.key)}
@@ -565,7 +649,8 @@ export default function PlayerCard({
                       {s.label}
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Right column */}
@@ -578,14 +663,23 @@ export default function PlayerCard({
                   paddingLeft: 8,
                 }}
               >
-                {rightStats.map((s) => (
+                {rightStats.map((s) => {
+                  const isHighlighted = highlightedStat === s.key;
+                  const hasPuzzleMapping = CARD_STAT_TO_PUZZLE[s.key] !== null;
+                  const anotherHighlighted = highlightedStat != null && !isHighlighted;
+                  const dimmed = anotherHighlighted && !hasPuzzleMapping;
+                  return (
                   <div
                     key={s.key}
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
+                      opacity: dimmed ? 0.5 : 1,
+                      transition: "opacity 0.15s ease",
                     }}
+                    onMouseEnter={() => onStatHover?.(s.key)}
+                    onMouseLeave={() => onStatHover?.(null)}
                   >
                     {(() => {
                       const diff = statDiffs?.[s.key as keyof typeof statDiffs] as number | undefined;
@@ -606,9 +700,12 @@ export default function PlayerCard({
                               fontWeight: 900,
                               color: statColor,
                               minWidth: 22,
-                              backgroundColor: hasDiff ? (brightBg ? "#000000b0" : "#00000070") : undefined,
+                              backgroundColor: isHighlighted && !hasDiff
+                                ? (CATEGORY_DISPLAY_COLORS[CARD_STAT_TO_PUZZLE[s.key] || ""] || "#ffffff") + "40"
+                                : hasDiff ? (brightBg ? "#000000b0" : "#00000070") : undefined,
                               borderRadius: 4,
-                              padding: hasDiff ? "1px 5px" : undefined,
+                              padding: isHighlighted || hasDiff ? "1px 5px" : undefined,
+                              transition: "background-color 0.15s ease",
                             }}
                           >
                             {displayStat(s.key)}
@@ -640,7 +737,8 @@ export default function PlayerCard({
                       {s.label}
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

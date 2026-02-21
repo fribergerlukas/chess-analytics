@@ -12,12 +12,19 @@ const Chessboard = dynamic(
   { ssr: false }
 );
 
+type PhaseTriple = { opening: number; middlegame: number; endgame: number };
+type PhaseResultTriple = { opening: { wins: number; draws: number; losses: number }; middlegame: { wins: number; draws: number; losses: number }; endgame: { wins: number; draws: number; losses: number } };
+
 interface TargetStatsData {
   targetArenaRating: number;
   targetTier: string;
   targetShiny: boolean;
-  expectedPhaseAccuracy: { opening: number; middlegame: number; endgame: number };
-  expectedBestMoveRate: { opening: number; middlegame: number; endgame: number };
+  expectedPhaseAccuracy: PhaseTriple;
+  expectedBestMoveRate: PhaseTriple;
+  expectedBlunderRate?: PhaseTriple;
+  expectedMissedWinRate?: PhaseTriple;
+  expectedMissedSaveRate?: PhaseTriple;
+  expectedAccuracyByResult?: PhaseResultTriple;
   expectedCategoryStats: Record<string, number>;
 }
 
@@ -123,9 +130,7 @@ export default function Home() {
     if (!activeCard) return;
     const saved = loadTarget(queriedUser, activeCard.timeControl);
     setSavedTarget(saved);
-    if (saved && targetRating == null) {
-      setTargetRating(saved);
-    }
+    setTargetRating(saved);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queriedUser, activeIndex, cards]);
 
@@ -577,7 +582,7 @@ export default function Home() {
           const buildTargetArenaStats = (): ArenaStatsData | null => {
             if (!targetStats) return null;
             const tRating = targetStats.targetArenaRating;
-            const catKeys = ["attacking", "defending", "tactics", "positional", "opening", "endgame"] as const;
+            const catKeys = ["attacking", "defending", "tactics", "strategic", "opening", "endgame"] as const;
             const cats = {} as ArenaStatsData["categories"];
             for (const key of catKeys) {
               cats[key] = { stat: targetStats.expectedCategoryStats?.[key] ?? tRating, percentage: 0, successRate: 0 };
@@ -610,7 +615,7 @@ export default function Home() {
               attacking: catDiff("attacking"),
               defending: catDiff("defending"),
               tactics: catDiff("tactics"),
-              positional: catDiff("positional"),
+              strategic: catDiff("strategic"),
               opening: catDiff("opening"),
               endgame: catDiff("endgame"),
             };
@@ -1057,6 +1062,13 @@ export default function Home() {
               const phaseBestMoveVsExpected = cards[activeIndex]?.arenaStats?.phaseBestMoveRateVsExpected;
               const phaseByResult = cards[activeIndex]?.arenaStats?.phaseAccuracyByResult;
               const phaseBlunder = cards[activeIndex]?.arenaStats?.phaseBlunderRate;
+              const phaseMedianAcc = cards[activeIndex]?.arenaStats?.phaseMedianAccuracy;
+              const phaseMissedWin = cards[activeIndex]?.arenaStats?.phaseMissedWinRate;
+              const phaseMissedSave = cards[activeIndex]?.arenaStats?.phaseMissedSaveRate;
+              const phaseBlunderVsExpected = cards[activeIndex]?.arenaStats?.phaseBlunderRateVsExpected;
+              const phaseMissedWinVsExpected = cards[activeIndex]?.arenaStats?.phaseMissedWinRateVsExpected;
+              const phaseMissedSaveVsExpected = cards[activeIndex]?.arenaStats?.phaseMissedSaveRateVsExpected;
+              const phaseByResultVsExpected = cards[activeIndex]?.arenaStats?.phaseAccuracyByResultVsExpected;
               const hasTarget = targetStats != null;
               const PHASE_CATEGORIES = [
                 { abbr: "OPN", label: "Opening", color: "#a37acc", accKey: "opening" as const },
@@ -1065,8 +1077,11 @@ export default function Home() {
               ];
               const PHASE_METRICS = [
                 "Accuracy",
+                "Median Accuracy",
                 "Best Move Rate",
                 "Blunder Rate",
+                "Missed Wins",
+                "Missed Saves",
                 "Accuracy in Wins",
                 "Accuracy in Draws",
                 "Accuracy in Losses",
@@ -1093,9 +1108,21 @@ export default function Home() {
                   const bmr = phaseBestMove?.[cat.accKey];
                   if (bmr != null) return { text: `${bmr.toFixed(1)}%`, color: "#fff" };
                 }
+                if (metric === "Median Accuracy") {
+                  const val = phaseMedianAcc?.[cat.accKey];
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: "#fff" };
+                }
                 if (metric === "Blunder Rate") {
                   const br = phaseBlunder?.[cat.accKey];
                   if (br != null) return { text: `${br.toFixed(1)}%`, color: br > 3 ? "#e05252" : br > 1.5 ? "#c27a30" : "#81b64c" };
+                }
+                if (metric === "Missed Wins") {
+                  const val = phaseMissedWin?.[cat.accKey];
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: val > 2 ? "#e05252" : val > 1 ? "#c27a30" : "#81b64c" };
+                }
+                if (metric === "Missed Saves") {
+                  const val = phaseMissedSave?.[cat.accKey];
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: val > 2 ? "#e05252" : val > 1 ? "#c27a30" : "#81b64c" };
                 }
                 if (metric === "Accuracy in Wins") {
                   const val = phaseByResult?.[cat.accKey]?.wins;
@@ -1114,7 +1141,7 @@ export default function Home() {
 
               // Get the "Rating Range" expected value — derived from actual - vsExpected delta
               const getRangeValue = (cat: typeof PHASE_CATEGORIES[number], metric: string): { text: string; color: string } => {
-                if (metric === "Accuracy") {
+                if (metric === "Accuracy" || metric === "Median Accuracy") {
                   const accVal = phaseAccuracy?.[cat.accKey];
                   const vsExpected = phaseAccVsExpected?.[cat.accKey];
                   if (accVal != null && vsExpected != null) {
@@ -1130,18 +1157,84 @@ export default function Home() {
                     return { text: `${expected.toFixed(1)}%`, color: "#9b9895" };
                   }
                 }
+                if (metric === "Blunder Rate") {
+                  const br = phaseBlunder?.[cat.accKey];
+                  const vs = phaseBlunderVsExpected?.[cat.accKey];
+                  if (br != null && vs != null) {
+                    return { text: `${+(br - vs).toFixed(1)}%`, color: "#9b9895" };
+                  }
+                }
+                if (metric === "Missed Wins") {
+                  const val = phaseMissedWin?.[cat.accKey];
+                  const vs = phaseMissedWinVsExpected?.[cat.accKey];
+                  if (val != null && vs != null) {
+                    return { text: `${+(val - vs).toFixed(1)}%`, color: "#9b9895" };
+                  }
+                }
+                if (metric === "Missed Saves") {
+                  const val = phaseMissedSave?.[cat.accKey];
+                  const vs = phaseMissedSaveVsExpected?.[cat.accKey];
+                  if (val != null && vs != null) {
+                    return { text: `${+(val - vs).toFixed(1)}%`, color: "#9b9895" };
+                  }
+                }
+                if (metric === "Accuracy in Wins") {
+                  const val = phaseByResult?.[cat.accKey]?.wins;
+                  const vs = phaseByResultVsExpected?.[cat.accKey]?.wins;
+                  if (val != null && vs != null) {
+                    return { text: `${+(val - vs).toFixed(1)}%`, color: "#9b9895" };
+                  }
+                }
+                if (metric === "Accuracy in Draws") {
+                  const val = phaseByResult?.[cat.accKey]?.draws;
+                  const vs = phaseByResultVsExpected?.[cat.accKey]?.draws;
+                  if (val != null && vs != null) {
+                    return { text: `${+(val - vs).toFixed(1)}%`, color: "#9b9895" };
+                  }
+                }
+                if (metric === "Accuracy in Losses") {
+                  const val = phaseByResult?.[cat.accKey]?.losses;
+                  const vs = phaseByResultVsExpected?.[cat.accKey]?.losses;
+                  if (val != null && vs != null) {
+                    return { text: `${+(val - vs).toFixed(1)}%`, color: "#9b9895" };
+                  }
+                }
                 return { text: "\u2014", color: "#4a4745" };
               };
 
               // Get the "Target Rating" expected value
               const getTargetValue = (cat: typeof PHASE_CATEGORIES[number], metric: string): { text: string; color: string } => {
                 if (!targetStats) return { text: "\u2014", color: "#4a4745" };
-                if (metric === "Accuracy") {
+                if (metric === "Accuracy" || metric === "Median Accuracy") {
                   const val = targetStats.expectedPhaseAccuracy[cat.accKey];
                   return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
                 }
                 if (metric === "Best Move Rate") {
                   const val = targetStats.expectedBestMoveRate?.[cat.accKey];
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
+                }
+                if (metric === "Blunder Rate") {
+                  const val = targetStats.expectedBlunderRate?.[cat.accKey];
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
+                }
+                if (metric === "Missed Wins") {
+                  const val = targetStats.expectedMissedWinRate?.[cat.accKey];
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
+                }
+                if (metric === "Missed Saves") {
+                  const val = targetStats.expectedMissedSaveRate?.[cat.accKey];
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
+                }
+                if (metric === "Accuracy in Wins") {
+                  const val = targetStats.expectedAccuracyByResult?.[cat.accKey]?.wins;
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
+                }
+                if (metric === "Accuracy in Draws") {
+                  const val = targetStats.expectedAccuracyByResult?.[cat.accKey]?.draws;
+                  if (val != null) return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
+                }
+                if (metric === "Accuracy in Losses") {
+                  const val = targetStats.expectedAccuracyByResult?.[cat.accKey]?.losses;
                   if (val != null) return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
                 }
                 return { text: "\u2014", color: "#4a4745" };
@@ -1313,7 +1406,7 @@ export default function Home() {
                 ];
                 const premiumPages = [
                   { title: "Personalized Puzzles", desc: "Solve puzzles generated from your own games — positions where you missed the best move." },
-                  { title: "Advanced Skill Stats", desc: "Deep breakdowns for attacking, defending, calculation, tactics, positional play, and openings." },
+                  { title: "Advanced Skill Stats", desc: "Deep breakdowns for attacking, defending, calculation, tactics, strategic play, and openings." },
                   { title: "Game-Phase Analysis", desc: "See how you perform across opening, middlegame, and endgame with detailed insights and data." },
                   { title: "100 Games + Priority", desc: "Analyze up to 100 games with faster priority processing for quicker results." },
                 ];
@@ -1606,7 +1699,7 @@ export default function Home() {
                             attacking: { stat: 78, percentage: 14.2, successRate: 55.1 },
                             defending: { stat: 74, percentage: 18.5, successRate: 58.2 },
                             tactics: { stat: 79, percentage: 28.7, successRate: 84.1 },
-                            positional: { stat: 75, percentage: 36.1, successRate: 80.4 },
+                            strategic: { stat: 75, percentage: 36.1, successRate: 80.4 },
                             opening: { stat: 73, percentage: 30.8, successRate: 59.3 },
                             endgame: { stat: 77, percentage: 32.4, successRate: 49.8 },
                           },
@@ -1713,7 +1806,7 @@ export default function Home() {
                           attacking: { stat: 78, percentage: 14.2, successRate: 55.1 },
                           defending: { stat: 74, percentage: 18.5, successRate: 58.2 },
                           tactics: { stat: 79, percentage: 28.7, successRate: 84.1 },
-                          positional: { stat: 75, percentage: 36.1, successRate: 80.4 },
+                          strategic: { stat: 75, percentage: 36.1, successRate: 80.4 },
                           opening: { stat: 73, percentage: 30.8, successRate: 59.3 },
                           endgame: { stat: 77, percentage: 32.4, successRate: 49.8 },
                         },
@@ -1871,7 +1964,7 @@ export default function Home() {
                             attacking: { stat: 82, percentage: 15.31, successRate: 56.93 },
                             defending: { stat: 83, percentage: 19.38, successRate: 59.29 },
                             tactics: { stat: 88, percentage: 29.61, successRate: 86.04 },
-                            positional: { stat: 80, percentage: 37.93, successRate: 85.39 },
+                            strategic: { stat: 80, percentage: 37.93, successRate: 85.39 },
                             opening: { stat: 80, percentage: 29.92, successRate: 44.85 },
                             endgame: { stat: 77, percentage: 34.10, successRate: 26.09 },
                           },
@@ -1916,7 +2009,7 @@ export default function Home() {
                             attacking: { stat: 90, percentage: 15.31, successRate: 56.93 },
                             defending: { stat: 85, percentage: 19.38, successRate: 59.29 },
                             tactics: { stat: 91, percentage: 29.61, successRate: 86.04 },
-                            positional: { stat: 85, percentage: 37.93, successRate: 85.39 },
+                            strategic: { stat: 85, percentage: 37.93, successRate: 85.39 },
                             opening: { stat: 86, percentage: 29.92, successRate: 43.09 },
                             endgame: { stat: 83, percentage: 34.10, successRate: 26.09 },
                           },
@@ -1938,7 +2031,7 @@ export default function Home() {
                           attacking: -8,
                           defending: -2,
                           tactics: -3,
-                          positional: -5,
+                          strategic: -5,
                           opening: -6,
                           endgame: -6,
                         }}
