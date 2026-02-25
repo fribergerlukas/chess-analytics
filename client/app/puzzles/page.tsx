@@ -454,7 +454,7 @@ export default function PuzzlesPage() {
         setReportProfile(profileData);
         // Auto-select first available TC so the card shows immediately
         if (!reportTimeCategory) {
-          for (const tc of ["blitz", "rapid", "bullet"] as const) {
+          for (const tc of ["rapid", "blitz", "bullet"] as const) {
             if (ratings[tc]) { setReportTimeCategory(tc); break; }
           }
         }
@@ -1945,7 +1945,7 @@ export default function PuzzlesPage() {
   // ── Puzzle List View ──
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#312e2b", backgroundImage: "repeating-conic-gradient(#2b2926 0% 25%, transparent 0% 50%)", backgroundSize: "60px 60px", color: "#fff" }}>
-      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(-50%) translateX(8px); } to { opacity: 1; transform: translateY(-50%) translateX(0); } }`}</style>
+      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(-50%) translateX(-8px); } to { opacity: 1; transform: translateY(-50%) translateX(0); } } @keyframes fadeInRight { from { opacity: 0; transform: translateY(-50%) translateX(8px); } to { opacity: 1; transform: translateY(-50%) translateX(0); } }`}</style>
       <main className="mx-auto max-w-5xl px-6 py-10 space-y-8">
         {/* Training Ground */}
         {queriedUser && !loading && !activePuzzle && !selectedCategory && (
@@ -1995,15 +1995,52 @@ export default function PuzzlesPage() {
                 );
               })()}
 
-              {/* Speech bubble positioned to the right of the card — appears after card loads */}
+              {/* Speech bubble positioned to the left of the card — appears after card loads */}
               {reportCard && (
                 <div style={{
                   position: "absolute",
-                  left: "calc(100% + 20px)",
-                  top: "50%",
+                  right: "calc(100% + 20px)",
+                  top: "30%",
                   transform: "translateY(-50%)",
                   width: 240,
                   animation: "fadeIn 0.4s ease-out",
+                }}>
+                  {/* Tail pointing right toward the card */}
+                  <div style={{
+                    position: "absolute",
+                    top: "50%",
+                    right: -10,
+                    transform: "translateY(-50%)",
+                    width: 0,
+                    height: 0,
+                    borderTop: "10px solid transparent",
+                    borderBottom: "10px solid transparent",
+                    borderLeft: "12px solid #3a3733",
+                  }} />
+                  <div style={{
+                    backgroundColor: "#3a3733",
+                    borderRadius: 16,
+                    padding: "14px 20px",
+                  }}>
+                    <p style={{ color: "#fff", fontSize: 20, fontWeight: 950, margin: 0, lineHeight: 1.3, letterSpacing: "-0.01em" }}>
+                      Welcome to the training ground!
+                    </p>
+                    <p className="font-bold" style={{ color: "#e8e6e3", fontSize: 14, margin: "8px 0 0", lineHeight: 1.5 }}>
+                      We have personalized puzzles collected from your games ready for you. What do you prefer working on today?
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Recommendation bubble on the right — appears after card loads */}
+              {reportCard && savedTargetRating && (
+                <div style={{
+                  position: "absolute",
+                  left: "calc(100% + 20px)",
+                  top: "70%",
+                  transform: "translateY(-50%)",
+                  width: 240,
+                  animation: "fadeInRight 0.4s ease-out 0.15s both",
                 }}>
                   {/* Tail pointing left toward the card */}
                   <div style={{
@@ -2023,10 +2060,10 @@ export default function PuzzlesPage() {
                     padding: "14px 20px",
                   }}>
                     <p style={{ color: "#fff", fontSize: 20, fontWeight: 950, margin: 0, lineHeight: 1.3, letterSpacing: "-0.01em" }}>
-                      Welcome to the training ground!
+                      Our recommendation
                     </p>
                     <p className="font-bold" style={{ color: "#e8e6e3", fontSize: 14, margin: "8px 0 0", lineHeight: 1.5 }}>
-                      We have personalized puzzles collected from your games ready for you. What do you prefer working on today?
+                      Compared to your target rating at {savedTargetRating}, you need to improve the categories marked in red.
                     </p>
                   </div>
                 </div>
