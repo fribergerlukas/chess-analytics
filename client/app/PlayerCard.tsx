@@ -8,6 +8,8 @@ interface CategoryStat {
   stat: number;
   percentage: number;
   successRate: number;
+  total?: number;
+  success?: number;
 }
 
 export interface ArenaStatsData {
@@ -76,6 +78,11 @@ export interface ArenaStatsData {
     middlegame: number | null;
     endgame: number | null;
   };
+  phaseEvalDelta?: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
   phaseBlunderRateVsExpected?: {
     opening: number | null;
     middlegame: number | null;
@@ -96,6 +103,7 @@ export interface ArenaStatsData {
     middlegame: { wins: number | null; draws: number | null; losses: number | null };
     endgame: { wins: number | null; draws: number | null; losses: number | null };
   };
+  tacticsBreakdown?: Record<string, { success: number; total: number }>;
   gamesAnalyzed: number;
   record?: { wins: number; draws: number; losses: number };
 }
@@ -206,7 +214,7 @@ export const CARD_STAT_TO_PUZZLE: Record<string, string | null> = {
   tactics: "tactics",
   strategic: "strategic",
   endgame: "endgame",
-  opening: null,
+  opening: "opening",
 };
 
 export const PUZZLE_TO_CARD_STAT: Record<string, string> = {
@@ -215,6 +223,7 @@ export const PUZZLE_TO_CARD_STAT: Record<string, string> = {
   tactics: "tactics",
   strategic: "strategic",
   endgame: "endgame",
+  opening: "opening",
 };
 
 export default function PlayerCard({

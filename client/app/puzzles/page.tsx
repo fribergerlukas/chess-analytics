@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import type { Arrow } from "react-chessboard";
 import { Chess, Square } from "chess.js";
 import { useUserContext } from "../UserContext";
 import { useAuth } from "../AuthContext";
+import PlayerCard, { ArenaStatsData, CARD_STAT_TO_PUZZLE, PUZZLE_TO_CARD_STAT } from "../PlayerCard";
 
 const Chessboard = dynamic(
   () => import("react-chessboard").then((mod) => mod.Chessboard),
@@ -35,15 +37,18 @@ interface PuzzleData {
 
 // Category display config: label, background color, text color
 const CATEGORY_DISPLAY: Record<string, { label: string; bg: string; fg: string }> = {
+  opening:     { label: "Opening",     bg: "#2d1a3b", fg: "#a37acc" },
   defending:   { label: "Defending",   bg: "#1a2d3b", fg: "#5ba3d9" },
   attacking:   { label: "Attacking",   bg: "#3b3520", fg: "#c27a30" },
   tactics:     { label: "Tactics",     bg: "#1a3b2d", fg: "#5bd98a" },
-  positional:  { label: "Positional",  bg: "#3b1a3b", fg: "#d95bd9" },
+  endgame:     { label: "Endgame",     bg: "#2d2d1a", fg: "#d9c75b" },
+  strategic:   { label: "Strategic",   bg: "#3b1a3b", fg: "#d95bd9" },
   // Legacy names (existing DB records)
+  positional:                { label: "Strategic",   bg: "#3b1a3b", fg: "#d95bd9" },
   resilience:                { label: "Defending",   bg: "#1a2d3b", fg: "#5ba3d9" },
   advantage_capitalisation:  { label: "Attacking",   bg: "#3b3520", fg: "#c27a30" },
   opportunity_creation:      { label: "Tactics",     bg: "#1a3b2d", fg: "#5bd98a" },
-  precision_only_move:       { label: "Positional",  bg: "#3b1a3b", fg: "#d95bd9" },
+  precision_only_move:       { label: "Strategic",   bg: "#3b1a3b", fg: "#d95bd9" },
 };
 
 const SEVERITY_DISPLAY: Record<string, { label: string; bg: string; fg: string }> = {
@@ -210,6 +215,7 @@ function formatMoveList(fen: string, uciMoves: string[]): string {
 }
 
 export default function PuzzlesPage() {
+  const searchParams = useSearchParams();
   const { queriedUser, setQueriedUser, searchTrigger } = useUserContext();
   const { authUser, authLoading } = useAuth();
 
@@ -223,7 +229,6 @@ export default function PuzzlesPage() {
   }, [authUser, authLoading, queriedUser, setQueriedUser]);
 
   // List state
-  const [categoryFilter, setCategoryFilter] = useState("all");
   const [puzzles, setPuzzles] = useState<PuzzleData[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -236,9 +241,6 @@ export default function PuzzlesPage() {
   // Completed puzzles: maps puzzle id → result
   const [completedPuzzles, setCompletedPuzzles] = useState<Record<number, "solved" | "failed">>({});
 
-  // Table-level filters (applied client-side on the loaded puzzles)
-  const [tableCategoryFilter, setTableCategoryFilter] = useState("all");
-  const [tableSeverityFilter, setTableSeverityFilter] = useState("all");
 
   // Solver state
   const [activePuzzle, setActivePuzzle] = useState<PuzzleData | null>(null);
@@ -261,6 +263,12 @@ export default function PuzzlesPage() {
   const [puzzleRequiredMoves, setPuzzleRequiredMoves] = useState(1);
   const [pvMoves, setPvMoves] = useState<string[]>([]);
 
+  // Analysis mode state
+  const [analysisMode, setAnalysisMode] = useState(false);
+  const [analysisMoveHistory, setAnalysisMoveHistory] = useState<string[]>([]);
+  const [analysisHistoryIndex, setAnalysisHistoryIndex] = useState(-1);
+  const [puzzleStartFen, setPuzzleStartFen] = useState<string | null>(null);
+
   // Setup move state (opponent's move that leads to the puzzle position)
   const [animatingSetup, setAnimatingSetup] = useState(false);
   const [setupFen, setSetupFen] = useState<string | null>(null);
@@ -276,6 +284,50 @@ export default function PuzzlesPage() {
     white: string | null; black: string | null;
   }>({ white: null, black: null });
 
+  // Report overview state
+  const reportPuzzleCount = 500;
+  const [reportTimeCategory, setReportTimeCategory] = useState<string>("");
+  const [reportSummary, setReportSummary] = useState<{
+    total: number;
+    gamesAnalyzed: number;
+    byCategory: Record<string, number>;
+  } | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+
+  // Arena card state for report
+  const [reportCard, setReportCard] = useState<{
+    timeControl: "bullet" | "blitz" | "rapid";
+    chessRating: number;
+    peakRating?: number;
+    arenaStats: ArenaStatsData;
+  } | null>(null);
+  const [reportProfile, setReportProfile] = useState<{
+    title?: string;
+    countryCode?: string;
+    avatarUrl?: string;
+  } | null>(null);
+  const [highlightedCategory, setHighlightedCategory] = useState<string | null>(null);
+  const [tacticalExpanded, setTacticalExpanded] = useState(false);
+  const [bestMoveExpanded, setBestMoveExpanded] = useState(false);
+
+  // Training Ground state
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [trainingPuzzles, setTrainingPuzzles] = useState<(PuzzleData | null)[]>(Array(10).fill(null));
+  const [trainingLoading, setTrainingLoading] = useState(false);
+  const [trainingOffset, setTrainingOffset] = useState(0);
+  const profileCacheRef = useRef<{ username: string; profile: { title?: string; countryCode?: string; avatarUrl?: string }; ratings: Record<string, number>; peakRatings: Record<string, number> } | null>(null);
+
+  // Target card state (read-only — set from main page via localStorage)
+  const [targetStats, setTargetStats] = useState<{
+    targetArenaRating: number;
+    targetTier: string;
+    targetShiny: boolean;
+    expectedPhaseAccuracy: { opening: number; middlegame: number; endgame: number };
+    expectedBestMoveRate: { opening: number; middlegame: number; endgame: number };
+    expectedCategoryStats: Record<string, number>;
+  } | null>(null);
+  const [savedTargetRating, setSavedTargetRating] = useState<number | null>(null);
+
   // Background analysis state
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzedGames, setAnalyzedGames] = useState(0);
@@ -284,6 +336,7 @@ export default function PuzzlesPage() {
   const animationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTriggerRef = useRef(0);
+  const evalAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -292,8 +345,58 @@ export default function PuzzlesPage() {
     return () => {
       if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
       if (pollRef.current) clearInterval(pollRef.current);
+      if (evalAbortRef.current) evalAbortRef.current.abort();
     };
   }, []);
+
+  // Fetch Stockfish eval for a position (used in analysis mode)
+  const evalSeqRef = useRef(0);
+  function fetchPositionEval(fen: string) {
+    if (!showEvalBar) return;
+    if (evalAbortRef.current) evalAbortRef.current.abort();
+    const controller = new AbortController();
+    evalAbortRef.current = controller;
+    const seq = ++evalSeqRef.current;
+    (async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/eval?fen=${encodeURIComponent(fen)}`,
+          { signal: controller.signal }
+        );
+        if (res.ok && evalSeqRef.current === seq) {
+          const data = await res.json();
+          setCurrentEvalCp(data.eval);
+        }
+      } catch {
+        // Aborted or network error — ignore
+      }
+    })();
+  }
+
+  // When eval bar is toggled on during analysis mode, fetch eval for current position
+  useEffect(() => {
+    if (analysisMode && showEvalBar && game) {
+      fetchPositionEval(game.fen());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEvalBar]);
+
+  // Keyboard shortcuts for analysis mode
+  useEffect(() => {
+    if (!analysisMode) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        undoAnalysisMove();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        redoAnalysisMove();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisMode, analysisHistoryIndex, analysisMoveHistory]);
 
   // Listen for sidebar search triggers
   useEffect(() => {
@@ -304,17 +407,158 @@ export default function PuzzlesPage() {
   }, [searchTrigger]);
 
   // Auto-fetch on mount if queriedUser is set but we haven't fetched yet (tab switch)
+  // If coming from player card with a label filter, use fast path (just load existing puzzles)
+  const hasLabelParam = searchParams.get("label") != null;
   useEffect(() => {
     if (queriedUser && !fetchedUser && !loading) {
-      fetchPuzzles(queriedUser);
+      fetchPuzzles(queriedUser, hasLabelParam);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const boardDisabled = puzzleCompleted || puzzleFailed || animatingOpponent || animatingSetup;
+  // Fetch chess.com profile + ratings when queriedUser changes
+  useEffect(() => {
+    if (!queriedUser) return;
+    const user = queriedUser;
+    if (profileCacheRef.current?.username === user.toLowerCase()) {
+      setReportProfile(profileCacheRef.current.profile);
+      return;
+    }
+    (async () => {
+      let profileData: { title?: string; countryCode?: string; avatarUrl?: string } = {};
+      let ratings: Record<string, number> = {};
+      let peakRatings: Record<string, number> = {};
+      try {
+        const [profileRes, ratingsRes] = await Promise.all([
+          fetch(`https://api.chess.com/pub/player/${encodeURIComponent(user)}`),
+          fetch(`https://api.chess.com/pub/player/${encodeURIComponent(user)}/stats`),
+        ]);
+        if (profileRes.ok) {
+          const p = await profileRes.json();
+          profileData.title = p.title || undefined;
+          if (p.avatar) profileData.avatarUrl = p.avatar;
+          if (p.country) {
+            const parts = p.country.split("/");
+            profileData.countryCode = parts[parts.length - 1];
+          }
+        }
+        if (ratingsRes.ok) {
+          const d = await ratingsRes.json();
+          for (const tc of ["bullet", "blitz", "rapid"] as const) {
+            const key = `chess_${tc}`;
+            if (d[key]?.last?.rating) ratings[tc] = d[key].last.rating;
+            if (d[key]?.best?.rating) peakRatings[tc] = d[key].best.rating;
+          }
+        }
+        profileCacheRef.current = { username: user.toLowerCase(), profile: profileData, ratings, peakRatings };
+        setReportProfile(profileData);
+        // Auto-select first available TC so the card shows immediately
+        if (!reportTimeCategory) {
+          for (const tc of ["blitz", "rapid", "bullet"] as const) {
+            if (ratings[tc]) { setReportTimeCategory(tc); break; }
+          }
+        }
+      } catch {
+        // Non-critical
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queriedUser]);
 
-  async function loadPuzzleList(user: string) {
-    const puzzleParams = new URLSearchParams({ limit: "50", rated: "true" });
+  // Fetch arena stats (extracted so generateReport can re-call it)
+  async function fetchArenaStats(user?: string, tc?: string) {
+    const u = user || queriedUser;
+    const t = tc || reportTimeCategory;
+    if (!u || !t || t === "all") {
+      setReportCard(null);
+      return;
+    }
+    const cache = profileCacheRef.current;
+    if (!cache || cache.username !== u.toLowerCase() || !cache.ratings[t]) {
+      setReportCard(null);
+      return;
+    }
+    const timeControl = t as "bullet" | "blitz" | "rapid";
+    const rating = cache.ratings[timeControl];
+    const peak = cache.peakRatings[timeControl];
+    const profileData = cache.profile;
+    try {
+      const arenaParams = new URLSearchParams();
+      arenaParams.set("timeCategory", timeControl);
+      arenaParams.set("chessRating", String(rating));
+      if (profileData.title) arenaParams.set("title", profileData.title);
+      arenaParams.set("rated", "true");
+      const arenaRes = await fetch(
+        `${API_BASE}/users/${encodeURIComponent(u)}/arena-stats?${arenaParams}`
+      );
+      if (arenaRes.ok) {
+        const arenaStats: ArenaStatsData = await arenaRes.json();
+        setReportCard({ timeControl, chessRating: rating, peakRating: peak, arenaStats });
+      } else {
+        setReportCard(null);
+      }
+    } catch {
+      setReportCard(null);
+    }
+  }
+
+  // Fetch arena stats when time control selection changes
+  useEffect(() => {
+    fetchArenaStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queriedUser, reportTimeCategory]);
+
+  // Load saved target from localStorage and fetch target stats
+  useEffect(() => {
+    if (!queriedUser || !reportTimeCategory || reportTimeCategory === "all") {
+      setSavedTargetRating(null);
+      setTargetStats(null);
+      return;
+    }
+    // Read saved target from localStorage (same key format as main page)
+    let saved: number | null = null;
+    try {
+      const v = localStorage.getItem(`arena_target_${queriedUser.toLowerCase()}_${reportTimeCategory}`);
+      saved = v ? Number(v) : null;
+    } catch { /* */ }
+    setSavedTargetRating(saved);
+
+    if (saved == null) {
+      setTargetStats(null);
+      return;
+    }
+    (async () => {
+      try {
+        const params = new URLSearchParams({
+          targetRating: String(saved),
+          timeCategory: reportTimeCategory,
+        });
+        const res = await fetch(`${API_BASE}/target-stats?${params}`);
+        if (res.ok) setTargetStats(await res.json());
+        else setTargetStats(null);
+      } catch { setTargetStats(null); }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queriedUser, reportTimeCategory]);
+
+  const boardDisabled = (!analysisMode && (puzzleCompleted || puzzleFailed)) || animatingOpponent || animatingSetup;
+
+  const categoryKeys = ["opening", "defending", "attacking", "tactics", "endgame", "strategic"] as const;
+
+  async function loadPuzzleList(
+    user: string,
+    puzzleCount?: number,
+    category?: string,
+    timeCategory?: string,
+    label?: string
+  ) {
+    const puzzleParams = new URLSearchParams({
+      limit: String(puzzleCount || 500),
+      rated: "true",
+      ...(category ? { category } : {}),
+      ...(timeCategory ? { timeCategory } : {}),
+      ...(label ? { label } : {}),
+    });
     const res = await fetch(
       `${API_BASE}/users/${encodeURIComponent(user)}/puzzles?${puzzleParams}`
     );
@@ -353,7 +597,7 @@ export default function PuzzlesPage() {
     }, 5000);
   }
 
-  async function fetchPuzzles(user: string) {
+  async function fetchPuzzles(user: string, skipGenerate?: boolean) {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     setLoading(true);
     setError("");
@@ -362,10 +606,17 @@ export default function PuzzlesPage() {
     setActivePuzzle(null);
     setAnalyzing(false);
     setCompletedPuzzles({});
-    setTableCategoryFilter("all");
-    setTableSeverityFilter("all");
 
     try {
+      // Fast path: try loading existing puzzles first
+      if (skipGenerate) {
+        await loadPuzzleList(user);
+        setFetchedUser(user);
+        setLoading(false);
+        setStatusMsg("");
+        return;
+      }
+
       setStatusMsg("Importing games from chess.com...");
       const importRes = await fetch(`${API_BASE}/import/chesscom`, {
         method: "POST",
@@ -407,6 +658,66 @@ export default function PuzzlesPage() {
     }
   }
 
+  async function generateReport(user: string, puzzleCount: number, timeCategory: string) {
+    setReportLoading(true);
+    setError("");
+    try {
+      // 1. Import games with more history (200 games — after TC filter yields ~100)
+      const importRes = await fetch(`${API_BASE}/import/chesscom`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: user, rated: true, maxGames: 200 }),
+      });
+      if (!importRes.ok) {
+        const body = await importRes.json().catch(() => null);
+        throw new Error(body?.error || `Import failed (${importRes.status})`);
+      }
+
+      // 2. Generate puzzles from ALL evaluated games (no gameLimit)
+      const isSpecificTC = timeCategory && timeCategory !== "all";
+      const tcParam = isSpecificTC ? `?timeCategory=${timeCategory}` : "";
+      const genRes = await fetch(
+        `${API_BASE}/users/${encodeURIComponent(user)}/puzzles/generate${tcParam}`,
+        { method: "POST" }
+      );
+      if (!genRes.ok) {
+        const body = await genRes.json().catch(() => null);
+        throw new Error(body?.error || `Puzzle generation failed (${genRes.status})`);
+      }
+      const genData = await genRes.json();
+
+      // 3. Fetch summary (no gameLimit — count ALL puzzles)
+      const summaryParam = isSpecificTC ? `?timeCategory=${timeCategory}` : "";
+      const summaryRes = await fetch(
+        `${API_BASE}/users/${encodeURIComponent(user)}/puzzles/summary${summaryParam}`
+      );
+      if (summaryRes.ok) {
+        const data = await summaryRes.json();
+        setReportSummary(data);
+      }
+
+      // 4. Re-fetch arena stats (categories now have fresh position data)
+      await fetchArenaStats(user, timeCategory);
+
+      // 5. Load puzzle list
+      const tcFilter = isSpecificTC ? timeCategory : undefined;
+      await loadPuzzleList(user, puzzleCount, undefined, tcFilter);
+      setFetchedUser(user);
+
+      // If background analysis is running, start polling
+      if (genData.analyzing) {
+        setAnalyzing(true);
+        setAnalyzedGames(genData.analyzedGames);
+        setTotalAnalysisGames(genData.totalGames);
+        startPolling(user);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
   function resetMultiMoveState() {
     setSelectedSquare(null);
     setShowPlayedMove(false);
@@ -418,6 +729,95 @@ export default function PuzzlesPage() {
     setPuzzleFailed(false);
     setFailedBestMove(null);
     setCurrentEvalCp(null);
+    setAnalysisMode(false);
+    setAnalysisMoveHistory([]);
+    setAnalysisHistoryIndex(-1);
+  }
+
+  function enterAnalysisMode() {
+    if (!game) return;
+    const currentFen = game.fen();
+    setAnalysisMode(true);
+    setAnalysisMoveHistory([currentFen]);
+    setAnalysisHistoryIndex(0);
+    setSelectedSquare(null);
+    setHighlightedSquares(new Set());
+    fetchPositionEval(currentFen);
+  }
+
+  function exitAnalysisMode() {
+    setAnalysisMode(false);
+    setSelectedSquare(null);
+    setHighlightedSquares(new Set());
+  }
+
+  function tryAnalysisMove(from: string, to: string): boolean {
+    if (!game) return false;
+    const piece = game.get(from as Square);
+    const isPromotion =
+      piece?.type === "p" &&
+      ((piece.color === "w" && to[1] === "8") ||
+       (piece.color === "b" && to[1] === "1"));
+
+    const moveOpts: { from: Square; to: Square; promotion?: "q" } = {
+      from: from as Square,
+      to: to as Square,
+    };
+    if (isPromotion) moveOpts.promotion = "q";
+
+    const moveCopy = new Chess(game.fen());
+    let move;
+    try {
+      move = moveCopy.move(moveOpts);
+    } catch {
+      return false;
+    }
+    if (!move) return false;
+
+    const newFen = moveCopy.fen();
+    // Truncate any redo history and push new position
+    const newHistory = analysisMoveHistory.slice(0, analysisHistoryIndex + 1);
+    newHistory.push(newFen);
+    setAnalysisMoveHistory(newHistory);
+    setAnalysisHistoryIndex(newHistory.length - 1);
+    setGame(new Chess(newFen));
+    setSelectedSquare(null);
+    setHighlightedSquares(new Set());
+    fetchPositionEval(newFen);
+    return true;
+  }
+
+  function undoAnalysisMove() {
+    if (analysisHistoryIndex <= 0) return;
+    const newIndex = analysisHistoryIndex - 1;
+    const fen = analysisMoveHistory[newIndex];
+    setAnalysisHistoryIndex(newIndex);
+    setGame(new Chess(fen));
+    setSelectedSquare(null);
+    setHighlightedSquares(new Set());
+    fetchPositionEval(fen);
+  }
+
+  function redoAnalysisMove() {
+    if (analysisHistoryIndex >= analysisMoveHistory.length - 1) return;
+    const newIndex = analysisHistoryIndex + 1;
+    const fen = analysisMoveHistory[newIndex];
+    setAnalysisHistoryIndex(newIndex);
+    setGame(new Chess(fen));
+    setSelectedSquare(null);
+    setHighlightedSquares(new Set());
+    fetchPositionEval(fen);
+  }
+
+  function resetToPuzzleStart() {
+    if (!puzzleStartFen) return;
+    const fen = puzzleStartFen;
+    setAnalysisMoveHistory([fen]);
+    setAnalysisHistoryIndex(0);
+    setGame(new Chess(fen));
+    setSelectedSquare(null);
+    setHighlightedSquares(new Set());
+    fetchPositionEval(fen);
   }
 
   function playSetupAnimation(sFen: string, puzzleFen: string) {
@@ -485,6 +885,7 @@ export default function PuzzlesPage() {
     setSetupFen(sFen);
     setSetupMoveUci(sMoveUci);
     setCurrentEvalCp(puzzle.evalBeforeCp);
+    setPuzzleStartFen(puzzle.fen);
 
     if (sFen && sMoveUci) {
       // Show the pre-puzzle position, then animate the opponent's move
@@ -510,17 +911,113 @@ export default function PuzzlesPage() {
   }
 
   function goToNextPuzzle() {
-    // Find the next unsolved puzzle
-    for (let i = activePuzzleIndex + 1; i < puzzles.length; i++) {
-      if (!completedPuzzles[puzzles[i].id]) {
-        openPuzzle(puzzles[i], i);
+    // Find the next unsolved puzzle in training list
+    for (let i = activePuzzleIndex + 1; i < trainingPuzzles.length; i++) {
+      const p = trainingPuzzles[i];
+      if (p && !completedPuzzles[p.id]) {
+        openPuzzle(p, i);
         return;
       }
     }
   }
 
+  function backToList() {
+    setActivePuzzle(null);
+    setActivePuzzleIndex(-1);
+    resetMultiMoveState();
+  }
+
+  async function selectCategory(category: string) {
+    setSelectedCategory(category);
+    setTrainingPuzzles(Array(10).fill(null));
+    setTrainingLoading(true);
+    setTrainingOffset(0);
+    setCompletedPuzzles({});
+    setActivePuzzle(null);
+    setActivePuzzleIndex(-1);
+
+    try {
+      // Import + generate if needed
+      if (queriedUser) {
+        const isSpecificTC = reportTimeCategory && reportTimeCategory !== "all";
+        const tcParam = isSpecificTC ? `?timeCategory=${reportTimeCategory}` : "";
+        await fetch(
+          `${API_BASE}/users/${encodeURIComponent(queriedUser)}/puzzles/generate${tcParam}`,
+          { method: "POST" }
+        );
+
+        // Fetch 10 puzzles for this category
+        const puzzleParams = new URLSearchParams({
+          limit: "10",
+          rated: "true",
+          category,
+          ...(isSpecificTC ? { timeCategory: reportTimeCategory } : {}),
+        });
+        const res = await fetch(
+          `${API_BASE}/users/${encodeURIComponent(queriedUser)}/puzzles?${puzzleParams}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const loaded: (PuzzleData | null)[] = [];
+          for (let i = 0; i < 10; i++) {
+            loaded.push(data.puzzles[i] || null);
+          }
+          setTrainingPuzzles(loaded);
+          setPuzzles(data.puzzles);
+          setTotal(data.total);
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setTrainingLoading(false);
+    }
+  }
+
+  async function loadMoreTraining() {
+    if (!queriedUser || !selectedCategory) return;
+    const newOffset = trainingOffset + 10;
+    setTrainingOffset(newOffset);
+    setTrainingLoading(true);
+
+    // Add 10 more placeholder slots
+    setTrainingPuzzles((prev) => [...prev, ...Array(10).fill(null)]);
+
+    try {
+      const isSpecificTC = reportTimeCategory && reportTimeCategory !== "all";
+      const puzzleParams = new URLSearchParams({
+        limit: "10",
+        offset: String(newOffset),
+        rated: "true",
+        category: selectedCategory,
+        ...(isSpecificTC ? { timeCategory: reportTimeCategory } : {}),
+      });
+      const res = await fetch(
+        `${API_BASE}/users/${encodeURIComponent(queriedUser)}/puzzles?${puzzleParams}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setTrainingPuzzles((prev) => {
+          const updated = [...prev];
+          for (let i = 0; i < 10; i++) {
+            updated[newOffset + i] = data.puzzles[i] || null;
+          }
+          return updated;
+        });
+        setPuzzles((prev) => [...prev, ...data.puzzles]);
+      }
+    } catch {
+      // Non-critical
+    } finally {
+      setTrainingLoading(false);
+    }
+  }
+
   function tryMove(from: string, to: string): boolean {
     if (!activePuzzle || !game || boardDisabled || from === to) return false;
+
+    // In analysis mode, allow any legal move (chess.js handles turn alternation)
+    if (analysisMode) return tryAnalysisMove(from, to);
 
     // Only allow the user to move pieces of their own side
     const userIsWhite = activePuzzle.sideToMove === "WHITE";
@@ -642,7 +1139,8 @@ export default function PuzzlesPage() {
     if (piece) {
       const isWhitePiece = piece.color === "w";
       const isWhiteTurn = game.turn() === "w";
-      if (isWhitePiece === isWhiteTurn) {
+      // In analysis mode, allow selecting whichever side's turn it is
+      if (analysisMode ? isWhitePiece === isWhiteTurn : isWhitePiece === isWhiteTurn) {
         setSelectedSquare(square as Square);
         return;
       }
@@ -690,7 +1188,7 @@ export default function PuzzlesPage() {
     }
 
     // Selected piece + legal move dots (override highlights)
-    if (selectedSquare && game && !boardDisabled) {
+    if (selectedSquare && game && (!boardDisabled || analysisMode)) {
       styles[selectedSquare] = { backgroundColor: "rgba(255, 255, 0, 0.4)" };
 
       const moves = game.moves({ square: selectedSquare, verbose: true });
@@ -707,13 +1205,15 @@ export default function PuzzlesPage() {
 
   function getArrows(): Arrow[] {
     const arrows: Arrow[] = [];
+    // Only show puzzle arrows when not deep in analysis (at initial position or not in analysis)
+    const showPuzzleArrows = !analysisMode || analysisHistoryIndex <= 0;
     // Only show best move arrow on failure
-    if (puzzleFailed && failedBestMove) {
+    if (puzzleFailed && failedBestMove && showPuzzleArrows) {
       const best = uciToSquares(failedBestMove);
       arrows.push({ startSquare: best.from, endSquare: best.to, color: "rgba(105, 146, 62, 0.85)" });
     }
     // Show played move arrow — available anytime (before solving, after completion/failure)
-    if (showPlayedMove && activePuzzle && !animatingSetup) {
+    if (showPlayedMove && activePuzzle && !animatingSetup && showPuzzleArrows) {
       const played = uciToSquares(activePuzzle.playedMoveUci);
       arrows.push({ startSquare: played.from, endSquare: played.to, color: "rgba(194, 64, 52, 0.85)" });
     }
@@ -771,7 +1271,7 @@ export default function PuzzlesPage() {
     );
 
     return (
-      <div className="min-h-screen" style={{ backgroundColor: "#312e2b", color: "#fff" }}>
+      <div className="min-h-screen" style={{ backgroundColor: "#312e2b", backgroundImage: "repeating-conic-gradient(#2b2926 0% 25%, transparent 0% 50%)", backgroundSize: "60px 60px", color: "#fff" }}>
         <main className="mx-auto max-w-6xl px-4 py-6">
           <div className="flex flex-col lg:flex-row gap-6 items-start justify-center">
             {/* Board with eval bar and player bars */}
@@ -853,6 +1353,15 @@ export default function PuzzlesPage() {
               })()}
 
               <div style={{ width: 520 }}>
+                {/* Analysis mode banner — above player bar, outside board sizing */}
+                {analysisMode && (
+                  <div
+                    className="flex items-center justify-center py-1"
+                    style={{ backgroundColor: "#1a2d3b", color: "#5ba3d9", fontSize: 11, fontWeight: 700, letterSpacing: "0.05em" }}
+                  >
+                    ANALYSIS MODE
+                  </div>
+                )}
                 {/* Top player bar (opponent) */}
                 <PlayerBar
                   name={topName}
@@ -908,315 +1417,860 @@ export default function PuzzlesPage() {
             </div>
 
             {/* Side Panel — matches board height */}
-            <div
-              className="flex-shrink-0 flex flex-col rounded-md overflow-hidden"
-              style={{
-                width: 280,
-                marginTop: 32, /* align with board (skip top player bar) */
-                minHeight: 520,
-                backgroundColor: "#272522",
-              }}
-            >
-              {/* Header */}
+            {(() => {
+              const catDisplay = activePuzzle.category ? CATEGORY_DISPLAY[activePuzzle.category] : null;
+              const catAccentColor = catDisplay?.fg || "#5ba3d9";
+              return (
               <div
-                className="flex items-center justify-between px-4 py-3"
-                style={{ borderBottom: "1px solid #3d3a37" }}
+                className="flex-shrink-0 flex flex-col rounded-md overflow-hidden"
+                style={{
+                  width: 280,
+                  marginTop: 32,
+                  minHeight: 520,
+                  backgroundColor: "#272522",
+                  borderTop: `3px solid ${catAccentColor}`,
+                }}
               >
-                <h2 className="text-sm font-bold" style={{ color: "#fff" }}>
-                  Puzzle #{activePuzzleIndex + 1}
-                </h2>
-                <button
-                  onClick={() => setActivePuzzle(null)}
-                  className="text-xs font-semibold px-2.5 py-1 rounded transition-colors"
-                  style={{ backgroundColor: "#3d3a37", color: "#d1cfcc" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#4b4847")}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#3d3a37")}
+                {/* Header — category badge + puzzle number + back */}
+                <div
+                  className="px-4 py-3"
+                  style={{ borderBottom: "1px solid #3d3a37" }}
                 >
-                  Back
-                </button>
-              </div>
-
-              {/* Prompt / Status area */}
-              <div className="px-4 py-3" style={{ borderBottom: "1px solid #3d3a37" }}>
-                {/* Animating */}
-                {(animatingSetup || animatingOpponent) && (
-                  <div className="flex items-center gap-2 text-xs" style={{ color: "#d1cfcc" }}>
-                    <div
-                      className="h-3.5 w-3.5 animate-spin rounded-full border-2"
-                      style={{ borderColor: "#4b4847", borderTopColor: "#81b64c" }}
-                    />
-                    Opponent is playing...
-                  </div>
-                )}
-
-                {/* Active prompt */}
-                {!puzzleCompleted && !puzzleFailed && !animatingSetup && !animatingOpponent && (
-                  <div
-                    className="rounded px-3 py-2 text-xs font-semibold"
-                    style={{
-                      backgroundColor: activePuzzle.sideToMove === "WHITE" ? "#f0d9b5" : "#b58863",
-                      color: activePuzzle.sideToMove === "WHITE" ? "#312e2b" : "#fff",
-                    }}
-                  >
-                    {isMultiMove
-                      ? `Move ${currentUserMove} of ${puzzleRequiredMoves} \u2014 find the best move`
-                      : `Your turn \u2014 find the best move`
-                    }
-                  </div>
-                )}
-
-                {/* Success */}
-                {puzzleCompleted && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#81b64c" }}>
-                      <span style={{ color: "#fff", fontSize: 12, lineHeight: 1 }}>&#10003;</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold" style={{ color: "#81b64c" }}>
-                        {isMultiMove ? "Puzzle Solved!" : "Correct!"}
-                      </p>
-                      {isMultiMove && (
-                        <p className="text-xs" style={{ color: "#d1cfcc" }}>
-                          All {puzzleRequiredMoves} moves correct
-                        </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {catDisplay && (
+                        <span
+                          className="rounded px-2 py-0.5 text-xs font-extrabold"
+                          style={{ backgroundColor: catDisplay.bg, color: catDisplay.fg }}
+                        >
+                          {catDisplay.label}
+                        </span>
                       )}
+                      <h2 className="text-sm font-bold" style={{ color: "#fff" }}>
+                        Puzzle #{activePuzzleIndex + 1}
+                      </h2>
                     </div>
+                    <button
+                      onClick={() => setActivePuzzle(null)}
+                      className="text-xs font-semibold px-2.5 py-1 rounded transition-colors"
+                      style={{ backgroundColor: "#3d3a37", color: "#d1cfcc" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#4b4847")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#3d3a37")}
+                    >
+                      Back
+                    </button>
                   </div>
-                )}
-
-                {/* Failure */}
-                {puzzleFailed && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#e05252" }}>
-                      <span style={{ color: "#fff", fontSize: 12, lineHeight: 1 }}>&#10005;</span>
+                  {/* Label pills */}
+                  {activePuzzle.labels && activePuzzle.labels.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {activePuzzle.labels.map((label) => (
+                        <span
+                          key={label}
+                          className="rounded px-2 py-0.5 text-xs font-semibold"
+                          style={{ backgroundColor: "#3d3a37", color: "#d1cfcc" }}
+                        >
+                          {label.replace(/_/g, " ")}
+                        </span>
+                      ))}
                     </div>
-                    <div>
-                      <p className="text-sm font-bold" style={{ color: "#e05252" }}>Incorrect</p>
-                      {isMultiMove && solvedMoves > 0 && (
-                        <p className="text-xs" style={{ color: "#d1cfcc" }}>
-                          {solvedMoves} of {puzzleRequiredMoves} moves
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                {/* Multi-move progress dots */}
-                {isMultiMove && (
-                  <div className="flex items-center gap-1.5 mt-2">
-                    {Array.from({ length: puzzleRequiredMoves }).map((_, i) => (
+                {/* Prompt / Status area */}
+                <div className="px-4 py-3" style={{ borderBottom: "1px solid #3d3a37" }}>
+                  {/* Animating */}
+                  {(animatingSetup || animatingOpponent) && !analysisMode && (
+                    <div className="flex items-center gap-2 text-xs" style={{ color: "#d1cfcc" }}>
                       <div
-                        key={i}
-                        className="rounded-full"
+                        className="h-3.5 w-3.5 animate-spin rounded-full border-2"
+                        style={{ borderColor: "#4b4847", borderTopColor: "#81b64c" }}
+                      />
+                      Opponent is playing...
+                    </div>
+                  )}
+
+                  {/* Active prompt (during puzzle) */}
+                  {!analysisMode && !puzzleCompleted && !puzzleFailed && !animatingSetup && !animatingOpponent && (
+                    <div
+                      className="rounded px-3 py-2 text-xs font-semibold"
+                      style={{
+                        backgroundColor: activePuzzle.sideToMove === "WHITE" ? "#f0d9b5" : "#b58863",
+                        color: activePuzzle.sideToMove === "WHITE" ? "#312e2b" : "#fff",
+                      }}
+                    >
+                      {isMultiMove
+                        ? `Move ${currentUserMove} of ${puzzleRequiredMoves} \u2014 find the best move`
+                        : `Your turn \u2014 find the best move`
+                      }
+                    </div>
+                  )}
+
+                  {/* Success (not in analysis) */}
+                  {!analysisMode && puzzleCompleted && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#81b64c" }}>
+                        <span style={{ color: "#fff", fontSize: 12, lineHeight: 1 }}>&#10003;</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold" style={{ color: "#81b64c" }}>
+                          {isMultiMove ? "Puzzle Solved!" : "Correct!"}
+                        </p>
+                        {isMultiMove && (
+                          <p className="text-xs" style={{ color: "#d1cfcc" }}>
+                            All {puzzleRequiredMoves} moves correct
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Failure (not in analysis) */}
+                  {!analysisMode && puzzleFailed && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: "#e05252" }}>
+                        <span style={{ color: "#fff", fontSize: 12, lineHeight: 1 }}>&#10005;</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold" style={{ color: "#e05252" }}>Incorrect</p>
+                        {isMultiMove && solvedMoves > 0 && (
+                          <p className="text-xs" style={{ color: "#d1cfcc" }}>
+                            {solvedMoves} of {puzzleRequiredMoves} moves
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Analysis mode indicator */}
+                  {analysisMode && (
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: "#5ba3d9" }}
+                      >
+                        <span style={{ color: "#fff", fontSize: 11, lineHeight: 1 }}>&#9654;</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold" style={{ color: "#5ba3d9" }}>Analysis Mode</p>
+                        <p className="text-xs" style={{ color: "#a09d9a" }}>
+                          Depth: {analysisHistoryIndex} move{analysisHistoryIndex !== 1 ? "s" : ""}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Multi-move progress dots */}
+                  {isMultiMove && !analysisMode && (
+                    <div className="flex items-center gap-1.5 mt-2">
+                      {Array.from({ length: puzzleRequiredMoves }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="rounded-full"
+                          style={{
+                            width: 10,
+                            height: 10,
+                            backgroundColor:
+                              i < solvedMoves
+                                ? "#81b64c"
+                                : puzzleFailed && i === solvedMoves
+                                ? "#e05252"
+                                : "#4b4847",
+                          }}
+                        />
+                      ))}
+                      <span className="text-xs ml-1" style={{ color: "#a09d9a" }}>
+                        {solvedMoves}/{puzzleRequiredMoves}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Analysis controls (analysis mode only) */}
+                {analysisMode && (
+                  <div className="px-4 py-3 flex gap-2" style={{ borderBottom: "1px solid #3d3a37" }}>
+                    <button
+                      onClick={undoAnalysisMove}
+                      disabled={analysisHistoryIndex <= 0}
+                      className="flex-1 rounded px-3 py-2 text-xs font-bold transition-colors"
+                      style={{
+                        backgroundColor: analysisHistoryIndex <= 0 ? "#3d3a37" : "#4b4847",
+                        color: analysisHistoryIndex <= 0 ? "#6b6865" : "#fff",
+                        cursor: analysisHistoryIndex <= 0 ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      &#9664; Undo
+                    </button>
+                    <button
+                      onClick={redoAnalysisMove}
+                      disabled={analysisHistoryIndex >= analysisMoveHistory.length - 1}
+                      className="flex-1 rounded px-3 py-2 text-xs font-bold transition-colors"
+                      style={{
+                        backgroundColor: analysisHistoryIndex >= analysisMoveHistory.length - 1 ? "#3d3a37" : "#4b4847",
+                        color: analysisHistoryIndex >= analysisMoveHistory.length - 1 ? "#6b6865" : "#fff",
+                        cursor: analysisHistoryIndex >= analysisMoveHistory.length - 1 ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      Redo &#9654;
+                    </button>
+                    <button
+                      onClick={resetToPuzzleStart}
+                      className="rounded px-3 py-2 text-xs font-bold transition-colors"
+                      style={{ backgroundColor: "#3d3a37", color: "#d1cfcc" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#4b4847")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#3d3a37")}
+                      title="Reset to puzzle start position"
+                    >
+                      &#8634;
+                    </button>
+                  </div>
+                )}
+
+                {/* Toggle buttons — chess.com review style */}
+                <div style={{ borderBottom: "1px solid #3d3a37" }}>
+                  {/* Show My Move toggle */}
+                  <button
+                    onClick={() => setShowPlayedMove((v) => !v)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors"
+                    style={{ backgroundColor: showPlayedMove ? "#3d3a37" : "transparent" }}
+                    onMouseEnter={(e) => { if (!showPlayedMove) e.currentTarget.style.backgroundColor = "#332f2c"; }}
+                    onMouseLeave={(e) => { if (!showPlayedMove) e.currentTarget.style.backgroundColor = "transparent"; }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="flex items-center justify-center rounded"
+                        style={{ width: 26, height: 26, backgroundColor: "#e0524220", color: "#e05252", fontSize: 13 }}
+                      >
+                        &#8618;
+                      </div>
+                      <span className="text-xs font-semibold" style={{ color: "#fff" }}>Show My Move</span>
+                    </div>
+                    {/* Toggle switch */}
+                    <div
+                      className="relative rounded-full transition-colors"
+                      style={{
+                        width: 32,
+                        height: 18,
+                        backgroundColor: showPlayedMove ? "#e05252" : "#4b4847",
+                      }}
+                    >
+                      <div
+                        className="absolute top-0.5 rounded-full transition-transform"
                         style={{
-                          width: 10,
-                          height: 10,
-                          backgroundColor:
-                            i < solvedMoves
-                              ? "#81b64c"
-                              : puzzleFailed && i === solvedMoves
-                              ? "#e05252"
-                              : "#4b4847",
+                          width: 14,
+                          height: 14,
+                          backgroundColor: "#fff",
+                          transform: showPlayedMove ? "translateX(16px)" : "translateX(2px)",
                         }}
                       />
-                    ))}
-                    <span className="text-xs ml-1" style={{ color: "#a09d9a" }}>
-                      {solvedMoves}/{puzzleRequiredMoves}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Toggle buttons — chess.com review style */}
-              <div style={{ borderBottom: "1px solid #3d3a37" }}>
-                {/* Show My Move toggle */}
-                <button
-                  onClick={() => setShowPlayedMove((v) => !v)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 transition-colors"
-                  style={{ backgroundColor: showPlayedMove ? "#3d3a37" : "transparent" }}
-                  onMouseEnter={(e) => { if (!showPlayedMove) e.currentTarget.style.backgroundColor = "#332f2c"; }}
-                  onMouseLeave={(e) => { if (!showPlayedMove) e.currentTarget.style.backgroundColor = "transparent"; }}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className="flex items-center justify-center rounded"
-                      style={{ width: 26, height: 26, backgroundColor: "#e0524220", color: "#e05252", fontSize: 13 }}
-                    >
-                      &#8618;
                     </div>
-                    <span className="text-xs font-semibold" style={{ color: "#fff" }}>Show My Move</span>
-                  </div>
-                  {/* Toggle switch */}
-                  <div
-                    className="relative rounded-full transition-colors"
-                    style={{
-                      width: 32,
-                      height: 18,
-                      backgroundColor: showPlayedMove ? "#e05252" : "#4b4847",
-                    }}
-                  >
-                    <div
-                      className="absolute top-0.5 rounded-full transition-transform"
-                      style={{
-                        width: 14,
-                        height: 14,
-                        backgroundColor: "#fff",
-                        transform: showPlayedMove ? "translateX(16px)" : "translateX(2px)",
-                      }}
-                    />
-                  </div>
-                </button>
-
-                {/* Show Evaluation toggle */}
-                <button
-                  onClick={() => setShowEvalBar((v) => !v)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 transition-colors"
-                  style={{ backgroundColor: showEvalBar ? "#3d3a37" : "transparent" }}
-                  onMouseEnter={(e) => { if (!showEvalBar) e.currentTarget.style.backgroundColor = "#332f2c"; }}
-                  onMouseLeave={(e) => { if (!showEvalBar) e.currentTarget.style.backgroundColor = "transparent"; }}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className="flex items-center justify-center rounded"
-                      style={{ width: 26, height: 26, backgroundColor: "#81b64c20", color: "#81b64c", fontSize: 13 }}
-                    >
-                      &#9881;
-                    </div>
-                    <span className="text-xs font-semibold" style={{ color: "#fff" }}>Evaluation Bar</span>
-                  </div>
-                  <div
-                    className="relative rounded-full transition-colors"
-                    style={{
-                      width: 32,
-                      height: 18,
-                      backgroundColor: showEvalBar ? "#81b64c" : "#4b4847",
-                    }}
-                  >
-                    <div
-                      className="absolute top-0.5 rounded-full transition-transform"
-                      style={{
-                        width: 14,
-                        height: 14,
-                        backgroundColor: "#fff",
-                        transform: showEvalBar ? "translateX(16px)" : "translateX(2px)",
-                      }}
-                    />
-                  </div>
-                </button>
-              </div>
-
-              {/* Line comparison (after completion/failure) */}
-              {(puzzleCompleted || puzzleFailed) && (
-                <div className="px-4 py-3 space-y-2.5" style={{ borderBottom: "1px solid #3d3a37" }}>
-                  {/* Best line */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "#81b64c" }}>
-                        Best line
-                      </span>
-                      <span className="font-mono text-xs font-bold" style={{ color: "#81b64c" }}>
-                        {formatEval(activePuzzle.evalBeforeCp)}
-                      </span>
-                    </div>
-                    <p className="text-xs font-mono leading-relaxed" style={{ color: "#fff" }}>
-                      {formatMoveList(activePuzzle.fen, pvMoves.length > 0 ? pvMoves : [activePuzzle.bestMoveUci])}
-                    </p>
-                  </div>
-
-                  <div style={{ borderTop: "1px solid #3d3a37" }} />
-
-                  {/* Your game */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "#e05252" }}>
-                        Your game
-                      </span>
-                      <span className="font-mono text-xs font-bold" style={{ color: "#e05252" }}>
-                        {formatEval(activePuzzle.evalBeforeCp)} → {formatEval(activePuzzle.evalAfterCp)}
-                      </span>
-                    </div>
-                    <p className="text-xs font-mono leading-relaxed" style={{ color: "#d1cfcc" }}>
-                      {formatMoveList(activePuzzle.fen, [activePuzzle.playedMoveUci])}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Action buttons (after completion/failure) */}
-              {(puzzleCompleted || puzzleFailed) && (
-                <div className="flex gap-2 px-4 py-3" style={{ borderBottom: "1px solid #3d3a37" }}>
-                  <button
-                    onClick={resetPuzzle}
-                    className="flex-1 rounded px-3 py-2 text-xs font-bold transition-colors"
-                    style={{ backgroundColor: "#c27a30", color: "#fff" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#d48a3a")}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#c27a30")}
-                  >
-                    Retry
                   </button>
-                  {puzzles.some((p, i) => i > activePuzzleIndex && !completedPuzzles[p.id]) && (
-                    <button
-                      onClick={goToNextPuzzle}
-                      className="flex-1 rounded px-3 py-2 text-xs font-bold transition-colors"
-                      style={{ backgroundColor: "#81b64c", color: "#fff" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#95c95f")}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#81b64c")}
-                    >
-                      Next Puzzle
-                    </button>
-                  )}
-                </div>
-              )}
 
-              {/* Spacer pushes game info to bottom */}
-              <div className="flex-1" />
-
-              {/* Game info — pinned to bottom */}
-              <div className="px-4 py-3 space-y-1.5" style={{ borderTop: "1px solid #3d3a37" }}>
-                <div className="flex items-center gap-2 text-xs" style={{ color: "#d1cfcc" }}>
-                  <span>{new Date(activePuzzle.game.endDate).toLocaleDateString()}</span>
-                  <span style={{ color: "#4b4847" }}>&middot;</span>
-                  <span>{formatTimeControl(activePuzzle.game.timeControl)}</span>
-                  {activePuzzle.category && CATEGORY_DISPLAY[activePuzzle.category] && (
-                    <>
-                      <span style={{ color: "#4b4847" }}>&middot;</span>
-                      <span
-                        className="rounded px-1.5 py-0.5 text-xs font-bold"
-                        style={{
-                          backgroundColor: CATEGORY_DISPLAY[activePuzzle.category].bg,
-                          color: CATEGORY_DISPLAY[activePuzzle.category].fg,
-                        }}
-                      >
-                        {CATEGORY_DISPLAY[activePuzzle.category].label}
-                      </span>
-                    </>
-                  )}
-                </div>
-                {gameUrl && (
-                  <a
-                    href={gameUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-semibold transition-colors block"
-                    style={{ color: "#81b64c" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = "#95c95f")}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = "#81b64c")}
+                  {/* Show Evaluation toggle */}
+                  <button
+                    onClick={() => setShowEvalBar((v) => !v)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 transition-colors"
+                    style={{ backgroundColor: showEvalBar ? "#3d3a37" : "transparent" }}
+                    onMouseEnter={(e) => { if (!showEvalBar) e.currentTarget.style.backgroundColor = "#332f2c"; }}
+                    onMouseLeave={(e) => { if (!showEvalBar) e.currentTarget.style.backgroundColor = "transparent"; }}
                   >
-                    View game on chess.com &#8599;
-                  </a>
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="flex items-center justify-center rounded"
+                        style={{ width: 26, height: 26, backgroundColor: "#81b64c20", color: "#81b64c", fontSize: 13 }}
+                      >
+                        &#9881;
+                      </div>
+                      <span className="text-xs font-semibold" style={{ color: "#fff" }}>Evaluation Bar</span>
+                    </div>
+                    <div
+                      className="relative rounded-full transition-colors"
+                      style={{
+                        width: 32,
+                        height: 18,
+                        backgroundColor: showEvalBar ? "#81b64c" : "#4b4847",
+                      }}
+                    >
+                      <div
+                        className="absolute top-0.5 rounded-full transition-transform"
+                        style={{
+                          width: 14,
+                          height: 14,
+                          backgroundColor: "#fff",
+                          transform: showEvalBar ? "translateX(16px)" : "translateX(2px)",
+                        }}
+                      />
+                    </div>
+                  </button>
+                </div>
+
+                {/* Line comparison (after completion/failure) */}
+                {(puzzleCompleted || puzzleFailed) && (
+                  <div className="px-4 py-3 space-y-2.5" style={{ borderBottom: "1px solid #3d3a37" }}>
+                    {/* Best line */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "#81b64c" }}>
+                          Best line
+                        </span>
+                        <span className="font-mono text-xs font-bold" style={{ color: "#81b64c" }}>
+                          {formatEval(activePuzzle.evalBeforeCp)}
+                        </span>
+                      </div>
+                      <p className="text-xs font-mono leading-relaxed" style={{ color: "#fff" }}>
+                        {formatMoveList(activePuzzle.fen, pvMoves.length > 0 ? pvMoves : [activePuzzle.bestMoveUci])}
+                      </p>
+                    </div>
+
+                    <div style={{ borderTop: "1px solid #3d3a37" }} />
+
+                    {/* Your game */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "#e05252" }}>
+                          Your game
+                        </span>
+                        <span className="font-mono text-xs font-bold" style={{ color: "#e05252" }}>
+                          {formatEval(activePuzzle.evalBeforeCp)} &rarr; {formatEval(activePuzzle.evalAfterCp)}
+                        </span>
+                      </div>
+                      <p className="text-xs font-mono leading-relaxed" style={{ color: "#d1cfcc" }}>
+                        {formatMoveList(activePuzzle.fen, [activePuzzle.playedMoveUci])}
+                      </p>
+                    </div>
+                  </div>
                 )}
+
+                {/* Action buttons (after completion/failure) */}
+                {(puzzleCompleted || puzzleFailed) && (
+                  <div className="flex gap-2 px-4 py-3" style={{ borderBottom: "1px solid #3d3a37" }}>
+                    {!analysisMode && (
+                      <button
+                        onClick={enterAnalysisMode}
+                        className="flex-1 rounded px-3 py-2 text-xs font-bold transition-colors"
+                        style={{ backgroundColor: "#5ba3d9", color: "#fff" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#6db3e9")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#5ba3d9")}
+                      >
+                        Analyze
+                      </button>
+                    )}
+                    {analysisMode && (
+                      <button
+                        onClick={exitAnalysisMode}
+                        className="flex-1 rounded px-3 py-2 text-xs font-bold transition-colors"
+                        style={{ backgroundColor: "#4b4847", color: "#d1cfcc" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#5b5857")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#4b4847")}
+                      >
+                        Exit Analysis
+                      </button>
+                    )}
+                    <button
+                      onClick={resetPuzzle}
+                      className="flex-1 rounded px-3 py-2 text-xs font-bold transition-colors"
+                      style={{ backgroundColor: "#c27a30", color: "#fff" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#d48a3a")}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#c27a30")}
+                    >
+                      Retry
+                    </button>
+                    {!analysisMode && trainingPuzzles.some((p, i) => i > activePuzzleIndex && p && !completedPuzzles[p.id]) && (
+                      <button
+                        onClick={goToNextPuzzle}
+                        className="flex-1 rounded px-3 py-2 text-xs font-bold transition-colors"
+                        style={{ backgroundColor: "#81b64c", color: "#fff" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#95c95f")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#81b64c")}
+                      >
+                        Next
+                      </button>
+                    )}
+                    {!analysisMode && selectedCategory && (
+                      <button
+                        onClick={backToList}
+                        className="flex-1 rounded px-3 py-2 text-xs font-bold transition-colors"
+                        style={{ backgroundColor: "#3d3a37", color: "#d1cfcc" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#4b4847")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#3d3a37")}
+                      >
+                        Back to list
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Spacer pushes game info to bottom */}
+                <div className="flex-1" />
+
+                {/* Game info — pinned to bottom */}
+                <div className="px-4 py-3 space-y-1.5" style={{ borderTop: "1px solid #3d3a37" }}>
+                  <div className="flex items-center gap-2 text-xs" style={{ color: "#d1cfcc" }}>
+                    <span>{new Date(activePuzzle.game.endDate).toLocaleDateString()}</span>
+                    <span style={{ color: "#4b4847" }}>&middot;</span>
+                    <span>{formatTimeControl(activePuzzle.game.timeControl)}</span>
+                  </div>
+                  {gameUrl && (
+                    <a
+                      href={gameUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-semibold transition-colors block"
+                      style={{ color: "#81b64c" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = "#95c95f")}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "#81b64c")}
+                    >
+                      View game on chess.com &#8599;
+                    </a>
+                  )}
+                </div>
               </div>
-            </div>
+              );
+            })()}
           </div>
         </main>
       </div>
     );
   }
 
+  // ── SVG Donut Chart ──
+  function DonutChart({ data, size = 200, thickness = 36, highlightedIndex, onSegmentHover }: {
+    data: { label: string; value: number; color: string; categoryKey?: string }[];
+    size?: number;
+    thickness?: number;
+    highlightedIndex?: number | null;
+    onSegmentHover?: (categoryKey: string | null) => void;
+  }) {
+    const [hovered, setHovered] = useState<number | null>(null);
+    const total = data.reduce((sum, d) => sum + d.value, 0);
+    if (total === 0) return null;
+
+    const center = size / 2;
+    const radius = (size - thickness) / 2;
+
+    // Build arc segments
+    let cumAngle = -90; // Start from top
+    const segments = data.map((d, i) => {
+      const pct = d.value / total;
+      const angle = pct * 360;
+      const startAngle = cumAngle;
+      const endAngle = cumAngle + angle;
+      cumAngle = endAngle;
+
+      const startRad = (startAngle * Math.PI) / 180;
+      const endRad = (endAngle * Math.PI) / 180;
+      const largeArc = angle > 180 ? 1 : 0;
+
+      const x1 = center + radius * Math.cos(startRad);
+      const y1 = center + radius * Math.sin(startRad);
+      const x2 = center + radius * Math.cos(endRad);
+      const y2 = center + radius * Math.sin(endRad);
+
+      const path = `M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`;
+
+      return { ...d, path, pct, index: i };
+    });
+
+    return (
+      <div style={{ position: "relative", width: size, height: size }}>
+        <svg width={size} height={size}>
+          {segments.map((seg) => (
+            <path
+              key={seg.index}
+              d={seg.path}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth={hovered === seg.index || highlightedIndex === seg.index ? thickness + 6 : thickness}
+              strokeLinecap="butt"
+              style={{ transition: "stroke-width 0.15s ease", cursor: "pointer" }}
+              onMouseEnter={() => { setHovered(seg.index); onSegmentHover?.(seg.categoryKey || null); }}
+              onMouseLeave={() => { setHovered(null); onSegmentHover?.(null); }}
+            />
+          ))}
+          {/* Center text */}
+          <text
+            x={center}
+            y={center - 8}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill="#fff"
+            fontSize={28}
+            fontWeight={800}
+          >
+            {total}
+          </text>
+          <text
+            x={center}
+            y={center + 16}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fill="#9b9895"
+            fontSize={11}
+            fontWeight={600}
+          >
+            puzzles
+          </text>
+        </svg>
+        {/* Tooltip */}
+        {hovered !== null && segments[hovered] && (
+          <div
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -120%)",
+              backgroundColor: "#1a1816",
+              border: `2px solid ${segments[hovered].color}`,
+              borderRadius: 8,
+              padding: "6px 12px",
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+              zIndex: 10,
+            }}
+          >
+            <span className="text-xs font-extrabold" style={{ color: segments[hovered].color }}>
+              {segments[hovered].label}
+            </span>
+            <span className="text-xs font-bold ml-2" style={{ color: "#fff" }}>
+              {segments[hovered].value}
+            </span>
+            <span className="text-xs ml-1" style={{ color: "#9b9895" }}>
+              ({Math.round(segments[hovered].pct * 100)}%)
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // ── Puzzle List View ──
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#312e2b", color: "#fff" }}>
+    <div className="min-h-screen" style={{ backgroundColor: "#312e2b", backgroundImage: "repeating-conic-gradient(#2b2926 0% 25%, transparent 0% 50%)", backgroundSize: "60px 60px", color: "#fff" }}>
       <main className="mx-auto max-w-5xl px-6 py-10 space-y-8">
+        {/* Training Ground */}
+        {queriedUser && !loading && !activePuzzle && !selectedCategory && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 32, paddingTop: 16 }}>
+            {/* Header */}
+            <h1 className="font-extrabold" style={{ color: "#fff", fontSize: 28, marginBottom: 0, textAlign: "center" }}>
+              Training Ground
+            </h1>
+
+            {/* Player Card (centered) with speech bubble on the side */}
+            <div style={{ position: "relative", display: "inline-flex", justifyContent: "center" }}>
+              {reportCard && (() => {
+                // Compute stat diffs vs target (green = reached, red = needs work)
+                const diffs = (() => {
+                  if (!targetStats) return undefined;
+                  const tRating = targetStats.targetArenaRating;
+                  const expectedCats = targetStats.expectedCategoryStats;
+                  const currentArena = reportCard.arenaStats.arenaRating;
+                  const currentCategories = reportCard.arenaStats.categories;
+                  const form = reportCard.arenaStats.form ?? 0;
+                  const catDiff = (key: string) =>
+                    (expectedCats?.[key] ?? tRating) - ((currentCategories[key as keyof typeof currentCategories]?.stat ?? currentArena) + form);
+                  return {
+                    overall: tRating - (currentArena + form),
+                    attacking: catDiff("attacking"),
+                    defending: catDiff("defending"),
+                    tactics: catDiff("tactics"),
+                    strategic: catDiff("strategic"),
+                    opening: catDiff("opening"),
+                    endgame: catDiff("endgame"),
+                  };
+                })();
+
+                return (
+                  <PlayerCard
+                    username={queriedUser}
+                    timeControl={reportCard.timeControl}
+                    chessRating={reportCard.chessRating}
+                    peakRating={reportCard.peakRating}
+                    title={reportProfile?.title}
+                    countryCode={reportProfile?.countryCode}
+                    avatarUrl={reportProfile?.avatarUrl}
+                    arenaStats={reportCard.arenaStats}
+                    statDiffs={diffs}
+                    highlightedStat={highlightedCategory ? (PUZZLE_TO_CARD_STAT[highlightedCategory] || null) : null}
+                  />
+                );
+              })()}
+
+              {/* Speech bubble positioned to the right of the card */}
+              <div style={{
+                position: "absolute",
+                left: "calc(100% + 20px)",
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: 240,
+              }}>
+                {/* Tail pointing left toward the card */}
+                <div style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: -10,
+                  transform: "translateY(-50%)",
+                  width: 0,
+                  height: 0,
+                  borderTop: "10px solid transparent",
+                  borderBottom: "10px solid transparent",
+                  borderRight: "12px solid #3a3733",
+                }} />
+                <div style={{
+                  backgroundColor: "#3a3733",
+                  borderRadius: 16,
+                  padding: "14px 20px",
+                }}>
+                  <p style={{ color: "#fff", fontSize: 20, fontWeight: 950, margin: 0, lineHeight: 1.3, letterSpacing: "-0.01em" }}>
+                    Welcome to the training ground!
+                  </p>
+                  <p className="font-bold" style={{ color: "#e8e6e3", fontSize: 14, margin: "8px 0 0", lineHeight: 1.5 }}>
+                    We have personalized puzzles collected from your games ready for you. What do you prefer working on today?
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Time control selector */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+              <span className="text-xs font-bold" style={{ color: "#9b9895", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Time control
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
+                {(["rapid", "blitz", "bullet"] as const).map((tc) => (
+                  <button
+                    key={tc}
+                    onClick={() => setReportTimeCategory(tc)}
+                    className="text-sm font-extrabold transition-colors"
+                    style={{
+                      padding: "8px 24px",
+                      borderRadius: 20,
+                      border: "none",
+                      backgroundColor: reportTimeCategory === tc ? "#81b64c" : "#3a3733",
+                      color: reportTimeCategory === tc ? "#fff" : "#9b9895",
+                      cursor: "pointer",
+                      textTransform: "capitalize",
+                    }}
+                    onMouseEnter={(e) => { if (reportTimeCategory !== tc) e.currentTarget.style.backgroundColor = "#4b4847"; }}
+                    onMouseLeave={(e) => { if (reportTimeCategory !== tc) e.currentTarget.style.backgroundColor = "#3a3733"; }}
+                  >
+                    {tc}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Category buttons — 3×2 grid */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 12,
+              width: "100%",
+              maxWidth: 520,
+            }}>
+              {(["tactics", "opening", "endgame", "strategic", "attacking", "defending"] as const).map((cat) => {
+                const display = CATEGORY_DISPLAY[cat];
+                const disabled = !reportTimeCategory;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => !disabled && selectCategory(cat)}
+                    disabled={disabled}
+                    className="font-extrabold transition-colors"
+                    style={{
+                      height: 56,
+                      borderRadius: 10,
+                      border: "none",
+                      backgroundColor: disabled ? "#2a2825" : "#3a3733",
+                      color: disabled ? "#4b4847" : "#fff",
+                      fontSize: 15,
+                      cursor: disabled ? "not-allowed" : "pointer",
+                      opacity: disabled ? 0.5 : 1,
+                    }}
+                    onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.filter = "brightness(1.2)"; setHighlightedCategory(cat); } }}
+                    onMouseLeave={(e) => { if (!disabled) { e.currentTarget.style.filter = "none"; setHighlightedCategory(null); } }}
+                  >
+                    {display.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Puzzle List (category selected, no active puzzle) */}
+        {queriedUser && !loading && !activePuzzle && selectedCategory && (
+          <div style={{ maxWidth: 640, margin: "0 auto" }}>
+            {/* Header with back button */}
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+              <button
+                onClick={() => { setSelectedCategory(null); setTrainingPuzzles(Array(10).fill(null)); }}
+                className="text-sm font-bold transition-colors"
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  border: "none",
+                  backgroundColor: "#3a3733",
+                  color: "#d1cfcc",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#4b4847"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#3a3733"; }}
+              >
+                &larr; Back
+              </button>
+              <h2 className="font-extrabold" style={{
+                color: CATEGORY_DISPLAY[selectedCategory]?.fg || "#fff",
+                fontSize: 22,
+              }}>
+                {CATEGORY_DISPLAY[selectedCategory]?.label || selectedCategory} Training
+              </h2>
+              {trainingLoading && (
+                <div
+                  className="h-4 w-4 animate-spin rounded-full border-2 flex-shrink-0"
+                  style={{ borderColor: "#4b4847", borderTopColor: "#81b64c" }}
+                />
+              )}
+            </div>
+
+            {/* Puzzle rows */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {trainingPuzzles.map((puzzle, idx) => {
+                const isLoaded = puzzle !== null;
+                const result = puzzle ? completedPuzzles[puzzle.id] : undefined;
+                const isSolved = result === "solved";
+                const isFailed = result === "failed";
+
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => isLoaded && openPuzzle(puzzle, idx)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "12px 16px",
+                      borderRadius: 10,
+                      backgroundColor: isLoaded ? "#262421" : "#1e1c1a",
+                      cursor: isLoaded ? "pointer" : "default",
+                      opacity: isLoaded ? 1 : 0.4,
+                      pointerEvents: isLoaded ? "auto" : "none",
+                      transition: "background-color 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => { if (isLoaded) e.currentTarget.style.backgroundColor = "#3a3733"; }}
+                    onMouseLeave={(e) => { if (isLoaded) e.currentTarget.style.backgroundColor = "#262421"; }}
+                  >
+                    {/* Checkbox */}
+                    <div style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 4,
+                      border: isSolved ? "2px solid #81b64c" : isFailed ? "2px solid #e05252" : "2px solid #4b4847",
+                      backgroundColor: isSolved ? "#81b64c" : isFailed ? "#e05252" : "transparent",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}>
+                      {isSolved && (
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                          <path d="M3 7l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                      {isFailed && (
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                          <path d="M4 4l6 6M10 4l-6 6" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+                        </svg>
+                      )}
+                    </div>
+
+                    {/* Puzzle number */}
+                    <span className="font-extrabold" style={{ color: "#fff", fontSize: 14, minWidth: 70 }}>
+                      {isLoaded ? `Puzzle ${idx + 1}` : "Loading..."}
+                    </span>
+
+                    {/* Labels */}
+                    {isLoaded && puzzle.labels && puzzle.labels.length > 0 && (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {puzzle.labels.map((label) => (
+                          <span
+                            key={label}
+                            className="text-xs font-bold"
+                            style={{
+                              padding: "2px 8px",
+                              borderRadius: 4,
+                              backgroundColor: CATEGORY_DISPLAY[selectedCategory]?.bg || "#3a3733",
+                              color: CATEGORY_DISPLAY[selectedCategory]?.fg || "#d1cfcc",
+                            }}
+                          >
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Severity badge */}
+                    {isLoaded && puzzle.severity && SEVERITY_DISPLAY[puzzle.severity] && (
+                      <span
+                        className="text-xs font-bold"
+                        style={{
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          backgroundColor: SEVERITY_DISPLAY[puzzle.severity].bg,
+                          color: SEVERITY_DISPLAY[puzzle.severity].fg,
+                          marginLeft: "auto",
+                        }}
+                      >
+                        {SEVERITY_DISPLAY[puzzle.severity].label}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Completion state */}
+            {(() => {
+              const loadedPuzzles = trainingPuzzles.filter((p): p is PuzzleData => p !== null);
+              const allLoaded = loadedPuzzles.length > 0 && !trainingLoading;
+              const allCompleted = allLoaded && loadedPuzzles.every((p) => completedPuzzles[p.id]);
+
+              if (!allCompleted) return null;
+
+              return (
+                <div style={{ marginTop: 20, textAlign: "center" }}>
+                  <div
+                    className="font-extrabold"
+                    style={{
+                      color: "#81b64c",
+                      fontSize: 18,
+                      marginBottom: 12,
+                    }}
+                  >
+                    All complete!
+                  </div>
+                  <button
+                    onClick={loadMoreTraining}
+                    className="font-extrabold transition-colors"
+                    style={{
+                      padding: "12px 32px",
+                      borderRadius: 10,
+                      border: "none",
+                      backgroundColor: "#81b64c",
+                      color: "#fff",
+                      fontSize: 15,
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#95c95f")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#81b64c")}
+                  >
+                    Load 10 more
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+
         {/* Loading */}
         {loading && (
           <div className="flex flex-col items-center gap-4 py-20">
@@ -1240,11 +2294,17 @@ export default function PuzzlesPage() {
           </div>
         )}
 
-        {/* Analyzing banner */}
-        {analyzing && !loading && (
+        {/* Empty states (only in puzzle list view) */}
+        {selectedCategory && !trainingPuzzles.some((p) => p !== null) && !trainingLoading && !error && queriedUser && !analyzing && (
+          <div className="text-center py-20 font-bold" style={{ color: "#9b9895", fontSize: 15 }}>
+            No puzzles found for this category. Try a different one.
+          </div>
+        )}
+
+        {selectedCategory && analyzing && !loading && (
           <div
             className="px-5 py-4 flex items-center gap-3"
-            style={{ backgroundColor: "#262421", borderRadius: 10 }}
+            style={{ backgroundColor: "#262421", borderRadius: 10, maxWidth: 640, margin: "0 auto" }}
           >
             <div
               className="h-4 w-4 animate-spin rounded-full border-2 flex-shrink-0"
@@ -1257,240 +2317,14 @@ export default function PuzzlesPage() {
           </div>
         )}
 
-        {/* Puzzle tables */}
-        {puzzles.length > 0 && !loading && (() => {
-          // Split puzzles into unsolved and completed, applying table filters
-          const applyFilters = (list: PuzzleData[]) =>
-            list.filter((p) => {
-              if (tableCategoryFilter !== "all" && p.category !== tableCategoryFilter) return false;
-              if (tableSeverityFilter !== "all" && p.severity !== tableSeverityFilter) return false;
-              return true;
-            });
-
-          const unsolved = applyFilters(puzzles.filter((p) => !completedPuzzles[p.id]));
-          const completed = applyFilters(puzzles.filter((p) => !!completedPuzzles[p.id]));
-
-          const FilterChip = ({ label, value, active, onClick }: {
-            label: string; value: string; active: boolean; onClick: () => void;
-          }) => (
-            <button
-              onClick={onClick}
-              className="px-3 py-1.5 text-xs font-bold transition-colors"
-              style={{
-                borderRadius: 20,
-                backgroundColor: active ? "#3a3733" : "transparent",
-                color: active ? "#fff" : "#9b9895",
-                border: "none",
-              }}
-              onMouseEnter={(e) => { if (!active) { e.currentTarget.style.backgroundColor = "#3a3733"; e.currentTarget.style.color = "#fff"; } }}
-              onMouseLeave={(e) => { if (!active) { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#9b9895"; } }}
-            >
-              {label}
-            </button>
-          );
-
-          const PuzzleRow = ({ puzzle, idx, dimmed }: { puzzle: PuzzleData; idx: number; dimmed?: boolean }) => {
-            const result = completedPuzzles[puzzle.id];
-            return (
-              <tr
-                key={puzzle.id}
-                className="transition-colors cursor-pointer"
-                style={{ borderBottom: "1px solid #3a3733", opacity: dimmed ? 0.6 : 1 }}
-                onClick={() => openPuzzle(puzzle, puzzles.indexOf(puzzle))}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#3a3733")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-              >
-                <td className="px-4 py-3" style={{ color: "#9b9895" }}>{idx + 1}</td>
-                <td className="px-4 py-3 font-bold" style={{ color: "#fff" }}>
-                  {new Date(puzzle.game.endDate).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-3 font-bold" style={{ color: "#d1cfcc" }}>
-                  {formatTimeControl(puzzle.game.timeControl)}
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className="inline-block w-4 h-4 align-middle"
-                    style={{
-                      backgroundColor: puzzle.sideToMove === "WHITE" ? "#f0d9b5" : "#b58863",
-                      borderRadius: 4,
-                    }}
-                  />
-                </td>
-                <td className="px-4 py-3">
-                  {puzzle.category && CATEGORY_DISPLAY[puzzle.category] ? (
-                    <span
-                      className="inline-block px-2.5 py-1 text-xs font-extrabold"
-                      style={{
-                        borderRadius: 6,
-                        backgroundColor: CATEGORY_DISPLAY[puzzle.category].bg,
-                        color: CATEGORY_DISPLAY[puzzle.category].fg,
-                      }}
-                    >
-                      {CATEGORY_DISPLAY[puzzle.category].label}
-                    </span>
-                  ) : (
-                    <span style={{ color: "#9b9895" }}>{"\u2014"}</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  {puzzle.severity && SEVERITY_DISPLAY[puzzle.severity] ? (
-                    <span
-                      className="inline-block px-2.5 py-1 text-xs font-extrabold"
-                      style={{
-                        borderRadius: 6,
-                        backgroundColor: SEVERITY_DISPLAY[puzzle.severity].bg,
-                        color: SEVERITY_DISPLAY[puzzle.severity].fg,
-                      }}
-                    >
-                      {SEVERITY_DISPLAY[puzzle.severity].label}
-                    </span>
-                  ) : (
-                    <span style={{ color: "#9b9895" }}>{"\u2014"}</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right font-mono font-bold" style={{ color: "#e05252" }}>
-                  {puzzle.deltaCp != null ? formatEval(puzzle.deltaCp) : "?"}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  {result ? (
-                    <span
-                      className="px-3 py-1.5 text-xs font-extrabold"
-                      style={{
-                        borderRadius: 6,
-                        backgroundColor: result === "solved" ? "#21371a" : "#3b1a1a",
-                        color: result === "solved" ? "#81b64c" : "#e05252",
-                      }}
-                    >
-                      {result === "solved" ? "Solved" : "Failed"}
-                    </span>
-                  ) : (
-                    <span
-                      className="px-3 py-1.5 text-xs font-extrabold"
-                      style={{ borderRadius: 6, backgroundColor: "#81b64c", color: "#fff" }}
-                    >
-                      Solve
-                    </span>
-                  )}
-                </td>
-              </tr>
-            );
-          };
-
-          return (
-            <div className="space-y-8">
-              {/* Summary + filter chips */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <p style={{ color: "#d1cfcc", fontSize: 15 }}>
-                    {unsolved.length} unsolved of {total} puzzles for{" "}
-                    <span className="font-extrabold" style={{ color: "#fff" }}>{queriedUser}</span>
-                  </p>
-                  {Object.keys(completedPuzzles).length > 0 && (
-                    <span className="text-sm font-bold" style={{ color: "#fff" }}>
-                      {Object.values(completedPuzzles).filter((r) => r === "solved").length} solved
-                      {" / "}
-                      {Object.values(completedPuzzles).filter((r) => r === "failed").length} failed
-                    </span>
-                  )}
-                </div>
-
-                {/* Filter chips */}
-                <div className="flex flex-wrap items-center gap-1">
-                  <span className="text-xs font-bold mr-1" style={{ color: "#9b9895" }}>Category:</span>
-                  <FilterChip label="All" value="all" active={tableCategoryFilter === "all"} onClick={() => setTableCategoryFilter("all")} />
-                  {Object.entries(CATEGORY_DISPLAY).map(([key, val]) => (
-                    <FilterChip key={key} label={val.label} value={key} active={tableCategoryFilter === key} onClick={() => setTableCategoryFilter(key)} />
-                  ))}
-                  <span className="text-xs font-bold mr-1 ml-3" style={{ color: "#9b9895" }}>Severity:</span>
-                  <FilterChip label="All" value="all" active={tableSeverityFilter === "all"} onClick={() => setTableSeverityFilter("all")} />
-                  {Object.entries(SEVERITY_DISPLAY).map(([key, val]) => (
-                    <FilterChip key={key} label={val.label} value={key} active={tableSeverityFilter === key} onClick={() => setTableSeverityFilter(key)} />
-                  ))}
-                </div>
-              </div>
-
-              {/* Unsolved puzzles table */}
-              {unsolved.length > 0 && (
-                <div className="overflow-hidden" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid #3a3733" }}>
-                        <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider" style={{ color: "#9b9895" }}>#</th>
-                        <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider" style={{ color: "#9b9895" }}>Date</th>
-                        <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider" style={{ color: "#9b9895" }}>Time</th>
-                        <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider" style={{ color: "#9b9895" }}>Side</th>
-                        <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider" style={{ color: "#9b9895" }}>Category</th>
-                        <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wider" style={{ color: "#9b9895" }}>Severity</th>
-                        <th className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wider" style={{ color: "#9b9895" }}>Eval</th>
-                        <th className="px-4 py-3.5"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {unsolved.map((puzzle, i) => (
-                        <PuzzleRow key={puzzle.id} puzzle={puzzle} idx={i} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {unsolved.length === 0 && Object.keys(completedPuzzles).length > 0 && (
-                <div className="text-center py-10 font-bold" style={{ color: "#fff", fontSize: 15 }}>
-                  All puzzles completed!
-                </div>
-              )}
-
-              {/* Completed puzzles section */}
-              {completed.length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: "#9b9895" }}>
-                    Completed ({completed.length})
-                  </h3>
-                  <div className="overflow-hidden" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
-                    <table className="w-full text-sm">
-                      <tbody>
-                        {completed.map((puzzle, i) => (
-                          <PuzzleRow key={puzzle.id} puzzle={puzzle} idx={i} dimmed />
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* Empty states */}
-        {!puzzles.length && !loading && !error && queriedUser && !analyzing && (
-          <div className="text-center py-20 font-bold" style={{ color: "#9b9895", fontSize: 15 }}>
-            No puzzles found for {queriedUser}. Try again shortly — games may still be analyzing.
-          </div>
-        )}
-
-        {!puzzles.length && !loading && !error && queriedUser && analyzing && (
-          <div className="flex flex-col items-center gap-4 py-20">
-            <div
-              className="h-10 w-10 animate-spin rounded-full border-4"
-              style={{ borderColor: "#3d3a37", borderTopColor: "#81b64c" }}
-            />
-            <p className="font-bold" style={{ color: "#d1cfcc", fontSize: 15 }}>
-              Analyzing games with Stockfish ({analyzedGames}/{totalAnalysisGames})...
-            </p>
-            <p className="font-bold" style={{ color: "#9b9895", fontSize: 13 }}>
-              Puzzles will appear here as games are analyzed
-            </p>
-          </div>
-        )}
-
-        {!puzzles.length && !loading && !error && !queriedUser && (
+        {!loading && !error && !queriedUser && (
           <div className="text-center py-24">
             <div style={{ fontSize: 48 }} className="mb-5">&#9819;</div>
             <p className="font-extrabold mb-3" style={{ color: "#fff", fontSize: 22 }}>
-              Personalized Puzzles
+              Training Ground
             </p>
             <p className="font-bold" style={{ color: "#9b9895", fontSize: 15 }}>
-              Enter a chess.com username in the sidebar to generate puzzles from your mistakes.
+              Log in to start training on puzzles from your real games.
             </p>
           </div>
         )}
