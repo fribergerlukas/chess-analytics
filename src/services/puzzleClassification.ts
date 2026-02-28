@@ -55,12 +55,12 @@ function toUserEval(evalCp: number | null | undefined, side: Side): number | nul
 // the exclusivity rule.
 
 export type PuzzleCategory =
+  | "opening"
   | "defending"
   | "attacking"
   | "tactics"
-  | "positional";
-
-const CAT_POSITIONAL_CPLOSS = 300;    // cpLoss ≥ this in equal zone → positional
+  | "endgame"
+  | "strategic";
 
 // ── Defending detection ──
 // A position is "defending" when TWO criteria are met:
@@ -158,7 +158,7 @@ interface ThreatInfo {
  * Skips the test if the player is already in check (the caller handles
  * that case separately since check is an obvious threat).
  */
-function detectNullMoveThreats(fen: string, sideToMove: Side): ThreatInfo {
+export function detectNullMoveThreats(fen: string, sideToMove: Side): ThreatInfo {
   const result: ThreatInfo = { maxMaterialWin: 0, canCheckmate: false };
 
   // If already in check, skip null-move (handled by caller)
@@ -228,7 +228,7 @@ function detectNullMoveThreats(fen: string, sideToMove: Side): ThreatInfo {
  * This means "defending" is about what the POSITION demands (handle the
  * threat) and the OUTCOME (you survive, you don't gain).
  */
-function isDefendingPosition(ctx: ClassificationContext): boolean {
+export function isDefendingPosition(ctx: ClassificationContext): boolean {
   const userEval = toUserEval(ctx.evalBeforeCp, ctx.sideToMove);
   if (userEval == null) return false;
 
@@ -253,44 +253,33 @@ function isDefendingPosition(ctx: ClassificationContext): boolean {
 }
 
 // ── Attacking detection ──
-// A position is "attacking" when TWO criteria are met:
-//   1. The best move executes or creates a threat against the opponent.
-//      EXECUTES: the best move wins material (SEE ≥ 1) or delivers check/mate.
-//      CREATES:  after the best move, the opponent faces material loss or mate
-//                if they do nothing (null-move test on the resulting position).
-//   2. Pressing — the eval is ≥ PRESSING_THRESHOLD. The player has the
-//      initiative and is on the winning side, not just finding a tactic
-//      from an equal position.
-const PRESSING_THRESHOLD = 50;  // userEval ≥ this → pressing advantage
+// A position is "attacking" when the best move executes or creates a
+// concrete threat against the opponent. No eval threshold — the global
+// holdable filter already ensures the position isn't completely lost.
+//
+// Mirror of defending:
+//   Defending:  threat AGAINST player (before move) + survival (eval ≤ 50)
+//   Attacking:  threat FROM player (best move)      — any holdable eval
 
 /**
  * Detect whether a position is an attacking situation.
  *
- * Two criteria must BOTH be met:
+ * The best move must execute or create a concrete threat against the
+ * opponent:
+ *   a) EXECUTES: best move captures and wins material (SEE ≥ 1), or
+ *      delivers check or checkmate.
+ *   b) CREATES: after the best move, the opponent faces material loss
+ *      or checkmate if they do nothing (null-move from their side).
  *
- * 1. THREAT FROM PLAYER — the best move executes or creates a concrete
- *    threat against the opponent:
- *    a) EXECUTES: best move captures and wins material (SEE ≥ 1), or
- *       delivers check or checkmate.
- *    b) CREATES: after the best move, the opponent faces material loss
- *       or checkmate if they do nothing (null-move from their side).
- *
- * 2. PRESSING — userEval ≥ 50. The player has the initiative. This isn't
- *    a tactic from an equal position — the player is on the winning side
- *    and the best move keeps the pressure on.
- *
- * Mirror of defending:
- *   Defending:  threat AGAINST player (before move) + survival (eval ≤ 50)
- *   Attacking:  threat FROM player (best move)      + pressing (eval ≥ 50)
+ * No eval threshold is applied — attacking puzzles can arise from any
+ * holdable position (equal, ahead, or slightly behind). The global
+ * holdable filter already prevents completely lost positions from
+ * becoming puzzles.
  */
-function isAttackingPosition(ctx: ClassificationContext): boolean {
-  const userEval = toUserEval(ctx.evalBeforeCp, ctx.sideToMove);
-  if (userEval == null) return false;
+export function isAttackingPosition(ctx: ClassificationContext): boolean {
+  if (ctx.evalBeforeCp == null) return false;
 
-  // Criterion 2 (fast pre-check): must be pressing advantage
-  if (userEval < PRESSING_THRESHOLD) return false;
-
-  // Criterion 1: best move executes or creates a threat
+  // Best move must exist to analyze threats
   if (!ctx.bestMoveUci) return false;
 
   let chess: Chess;
@@ -338,36 +327,114 @@ function isAttackingPosition(ctx: ClassificationContext): boolean {
   return false;
 }
 
+// ── Holdable position filter ──────────────────────────────────────────
+// No puzzle should come from a position where even the best move is lost.
+// Every puzzle must be from a holdable position.
+const HOLDABLE_THRESHOLD = -300;         // userEval ≥ this for all puzzles
+const ENDGAME_HOLDABLE_THRESHOLD = -100; // tighter for endgame (must be drawable)
+
+/**
+ * Check if a position is holdable (not lost even with best play).
+ * Returns false if the position is too far gone to be a useful puzzle.
+ */
+function isHoldablePosition(userEval: number, isEndgame: boolean): boolean {
+  if (isEndgame) return userEval >= ENDGAME_HOLDABLE_THRESHOLD;
+  return userEval >= HOLDABLE_THRESHOLD;
+}
+
+// ── Endgame detection ─────────────────────────────────────────────────
+// Reuses the same logic as arenaStats.ts: fewer than 7 non-pawn, non-king pieces.
+
+export function isEndgamePosition(fen: string): boolean {
+  const boardPart = fen.split(" ")[0];
+  let pieceCount = 0;
+  for (const ch of boardPart) {
+    if ("qrbnQRBN".includes(ch)) pieceCount++;
+  }
+  return pieceCount < 7;
+}
+
+// ── Tactics detection ─────────────────────────────────────────────────
+// A position is "tactics" if the solution contains a recognizable tactical motif.
+
+/** Tactical labels that qualify a puzzle as "tactics" category. */
+const TACTICAL_LABELS: Set<string> = new Set([
+  "fork", "pin", "skewer", "double_attack", "discovered_attack",
+  "removal_of_defender", "overload", "deflection", "intermezzo",
+  "sacrifice", "clearance", "back_rank", "mate_threat", "checkmate",
+  "smothered_mate", "trapped_piece", "x_ray", "interference",
+  "desperado", "attraction",
+]);
+
+/** Check if any detected labels are tactical motifs. */
+export function hasTacticalMotif(labels: PuzzleLabel[]): boolean {
+  return labels.some((l) => TACTICAL_LABELS.has(l));
+}
+
+/** Compute ply number from a FEN string (0-indexed). */
+function getPlyFromFen(fen: string): number {
+  const parts = fen.split(" ");
+  const fullmove = parseInt(parts[5]) || 1;
+  const isBlack = parts[1] === "b";
+  return (fullmove - 1) * 2 + (isBlack ? 1 : 0);
+}
+
 /**
  * Classify a puzzle into exactly one category.
  *
  * Decision tree (evaluated top-to-bottom, first match wins):
  *
- * 1. isDefendingPosition()  → DEFENDING
+ * 0. Position must be holdable (not lost). If not → null (skip puzzle).
+ *
+ * 1. Opening (ply ≤ 24) → OPENING
+ *    Early game — any mistake in the first 12 full moves.
+ *
+ * 2. hasTacticalMotif()     → TACTICS
+ *    Solution contains a recognizable pattern (fork, pin, skewer, etc.).
+ *    Checked first so tactical puzzles aren't diluted into other categories.
+ *
+ * 3. isEndgamePosition()    → ENDGAME
+ *    Endgame phase (< 7 major/minor pieces). Checked before defending/
+ *    attacking so endgame technique (captures, threats in simplified
+ *    positions) stays in the endgame bucket.
+ *
+ * 4. isDefendingPosition()  → DEFENDING
  *    Concrete threat against player (null-move + SEE) + survival (eval ≤ 50).
  *
- * 2. isAttackingPosition()  → ATTACKING
- *    Best move executes/creates threat + pressing advantage (eval ≥ 50).
+ * 5. isAttackingPosition()  → ATTACKING
+ *    Best move executes or creates a concrete threat against the opponent.
  *
- * 3. cpLoss ≥ 300     → POSITIONAL
- *    "The position was balanced but fragile. Only one move held."
- *
- * 4. Otherwise        → TACTICS
- *    "The position was balanced. Could you seize the initiative?"
+ * 6. Otherwise              → STRATEGIC
+ *    Quiet positional improvement — no concrete threats in either direction.
  */
 export function classifyCategory(ctx: ClassificationContext): PuzzleCategory | null {
   if (ctx.evalBeforeCp == null) return null;
 
+  const userEval = ctx.sideToMove === "WHITE" ? ctx.evalBeforeCp : -ctx.evalBeforeCp;
+  const endgame = isEndgamePosition(ctx.fen);
+
+  // Global filter: position must be holdable
+  if (!isHoldablePosition(userEval, endgame)) return null;
+
+  // 1. Opening — early game (ply ≤ 24)
+  if (getPlyFromFen(ctx.fen) <= 24) return "opening";
+
+  // 2. Tactics — any recognizable tactical motif takes priority
+  const labels = detectLabels(ctx.fen, ctx.bestMoveUci, ctx.pvMoves, null);
+  if (hasTacticalMotif(labels)) return "tactics";
+
+  // 3. Endgame — simplified positions stay in endgame bucket
+  //    (prevents endgame captures/threats from being absorbed by attacking)
+  if (endgame) return "endgame";
+
+  // 4. Defending — opponent has a concrete threat + player is surviving
   if (isDefendingPosition(ctx)) return "defending";
+
+  // 5. Attacking — best move creates/executes a concrete threat
   if (isAttackingPosition(ctx)) return "attacking";
 
-  const cpLoss =
-    ctx.evalBeforeCp != null && ctx.evalAfterCp != null
-      ? Math.abs(ctx.evalAfterCp - ctx.evalBeforeCp)
-      : 0;
-
-  if (cpLoss >= CAT_POSITIONAL_CPLOSS) return "positional";
-  return "tactics";
+  // 6. Strategic — catch-all: quiet positional improvement
+  return "strategic";
 }
 
 // ============================================================
@@ -468,6 +535,12 @@ export type PuzzleLabel =
   | "back_rank"
   | "mate_threat"
   | "checkmate"
+  | "smothered_mate"
+  | "trapped_piece"
+  | "x_ray"
+  | "interference"
+  | "desperado"
+  | "attraction"
   // Defensive / resilience labels
   | "perpetual_check"
   | "defensive_sacrifice"
@@ -480,6 +553,21 @@ export type PuzzleLabel =
 const PIECE_VAL: Record<string, number> = {
   p: 1, n: 3, b: 3, r: 5, q: 9, k: 0,
 };
+
+/** Count total material for each side from a FEN string. */
+function countMaterial(fen: string): { w: number; b: number } {
+  const boardPart = fen.split(" ")[0];
+  let w = 0, b = 0;
+  for (const ch of boardPart) {
+    const lower = ch.toLowerCase();
+    const val = PIECE_VAL[lower];
+    if (val) {
+      if (ch === ch.toUpperCase()) w += val;
+      else b += val;
+    }
+  }
+  return { w, b };
+}
 
 /** Apply a UCI move to a chess.js instance. Returns the move result or null. */
 function applyUci(chess: Chess, uci: string) {
@@ -495,19 +583,27 @@ function applyUci(chess: Chess, uci: string) {
 
 /**
  * Check if a piece on `square` is attacked by the opponent.
- * Works by swapping the turn and checking if any opponent move captures on that square.
+ *
+ * Determines the piece color on that square and checks if the OTHER
+ * color can capture it. Uses geometric ray-based checks via
+ * doesPieceDefend() to avoid chess.js turn-swap issues.
  */
 function isSquareAttacked(chess: Chess, square: string): boolean {
-  const fenParts = chess.fen().split(" ");
-  fenParts[1] = fenParts[1] === "w" ? "b" : "w";
-  fenParts[3] = "-"; // clear en passant
-  try {
-    const swapped = new Chess(fenParts.join(" "));
-    const moves = swapped.moves({ verbose: true });
-    return moves.some((m) => m.to === square);
-  } catch {
-    return false;
+  const piece = chess.get(square as Square);
+  if (!piece) return false;
+
+  const attackerColor = piece.color === "w" ? "b" : "w";
+  const board = chess.board();
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (!p || p.color !== attackerColor) continue;
+      const sq = toSquareName(c, 7 - r);
+      if (doesPieceDefend(chess, sq, square)) return true;
+    }
   }
+  return false;
 }
 
 /**
@@ -529,6 +625,189 @@ function getAttackedPieces(chess: Chess, square: string): string[] {
     return attacked;
   } catch {
     return [];
+  }
+}
+
+// ── Winning-threat enumeration (for double_attack detection) ─────────
+
+interface Threat {
+  source: Square;      // piece making the threat
+  target: Square;      // piece being threatened
+  targetType: string;  // piece type of target
+  gain: number;        // SEE value (material won if captured)
+}
+
+/**
+ * Enumerate all squares where `color` has a profitable capture (SEE > 0).
+ * Returns one threat per target square (highest-gain attacker wins ties).
+ */
+function getWinningThreats(chess: Chess, color: "w" | "b"): Threat[] {
+  // Swap turn to `color` so chess.js generates their moves
+  const fenParts = chess.fen().split(" ");
+  fenParts[1] = color;
+  fenParts[3] = "-"; // clear en passant (not meaningful after turn swap)
+  let swapped: Chess;
+  try {
+    swapped = new Chess(fenParts.join(" "));
+  } catch {
+    return [];
+  }
+
+  const captures = swapped.moves({ verbose: true }).filter(m => m.captured);
+  const bestByTarget = new Map<string, Threat>();
+
+  for (const m of captures) {
+    let gain: number;
+    try {
+      gain = seeCapture(swapped.fen(), m.from, m.to);
+    } catch {
+      continue; // chess.js can crash on certain positions during SEE
+    }
+    if (gain <= 0) continue;
+
+    const existing = bestByTarget.get(m.to);
+    if (!existing || gain > existing.gain) {
+      bestByTarget.set(m.to, {
+        source: m.from as Square,
+        target: m.to as Square,
+        targetType: m.captured!,
+        gain,
+      });
+    }
+  }
+
+  return Array.from(bestByTarget.values());
+}
+
+// ── Shared ray/direction helpers ──────────────────────────────────────
+
+/** Get sliding ray directions for a piece type. */
+function getDirectionsForPiece(type: string): [number, number][] {
+  switch (type) {
+    case "r": return [[0,1],[0,-1],[1,0],[-1,0]];
+    case "b": return [[1,1],[1,-1],[-1,1],[-1,-1]];
+    case "q": return [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+    default: return [];
+  }
+}
+
+/** Check if a piece type can slide on a given direction. */
+function canSlideOnDirection(type: string, df: number, dr: number): boolean {
+  const isDiag = df !== 0 && dr !== 0;
+  const isStraight = df === 0 || dr === 0;
+  return type === "q" || (type === "b" && isDiag) || (type === "r" && isStraight);
+}
+
+/** Convert file/rank indices (0-based) to square name. */
+function toSquareName(file: number, rank: number): string {
+  return String.fromCharCode(97 + file) + (rank + 1);
+}
+
+/**
+ * Get all squares a given side attacks on the board.
+ * Uses geometric ray-based checks to correctly handle all cases.
+ * Returns a Set of square names (e.g. "e4").
+ */
+function getAttackedSquares(chess: Chess, attackerColor: string): Set<string> {
+  const board = chess.board();
+  const squares = new Set<string>();
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (!p || p.color !== attackerColor) continue;
+      const sq = toSquareName(c, 7 - r);
+
+      // Check every square on the board for attack from this piece
+      for (let tr = 0; tr < 8; tr++) {
+        for (let tc = 0; tc < 8; tc++) {
+          const targetSq = toSquareName(tc, 7 - tr);
+          if (targetSq === sq) continue;
+          if (doesPieceDefend(chess, sq, targetSq)) {
+            squares.add(targetSq);
+          }
+        }
+      }
+    }
+  }
+
+  return squares;
+}
+
+/**
+ * Find all pieces of a given color that defend/control a target square.
+ * Uses geometric ray-based checks to correctly detect same-color defense
+ * (chess.js move generation can't detect this since it won't "capture" own pieces).
+ * Returns an array of square names where defenders sit.
+ */
+function findDefenders(chess: Chess, targetSq: string, defenderColor: string): string[] {
+  const board = chess.board();
+  const defenders: string[] = [];
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const p = board[r][c];
+      if (!p || p.color !== defenderColor) continue;
+      const sq = toSquareName(c, 7 - r);
+      if (sq === targetSq) continue;
+      if (doesPieceDefend(chess, sq, targetSq)) {
+        defenders.push(sq);
+      }
+    }
+  }
+
+  return defenders;
+}
+
+// ── Ray-based defense helpers ─────────────────────────────────────────
+// These bypass chess.js move generation to check if a piece geometrically
+// controls a square, regardless of what occupies the target.
+
+/** Check if the straight-line path from (ff,fr) to (tf,tr) is blocked. */
+function isPathBlocked(chess: Chess, ff: number, fr: number, tf: number, tr: number): boolean {
+  const df = Math.sign(tf - ff);
+  const dr = Math.sign(tr - fr);
+  let f = ff + df;
+  let r = fr + dr;
+  while (f !== tf || r !== tr) {
+    if (chess.get(toSquareName(f, r) as Square)) return true;
+    f += df;
+    r += dr;
+  }
+  return false;
+}
+
+/** Check if a piece at pieceSq geometrically defends/controls targetSq. */
+function doesPieceDefend(chess: Chess, pieceSq: string, targetSq: string): boolean {
+  const piece = chess.get(pieceSq as Square);
+  if (!piece) return false;
+  const pf = pieceSq.charCodeAt(0) - 97;
+  const pr = parseInt(pieceSq[1]) - 1;
+  const tf = targetSq.charCodeAt(0) - 97;
+  const tr = parseInt(targetSq[1]) - 1;
+  const df = tf - pf;
+  const dr = tr - pr;
+  if (df === 0 && dr === 0) return false;
+
+  switch (piece.type) {
+    case "p": {
+      const fwd = piece.color === "w" ? 1 : -1;
+      return dr === fwd && Math.abs(df) === 1;
+    }
+    case "n":
+      return (Math.abs(df) === 2 && Math.abs(dr) === 1) ||
+             (Math.abs(df) === 1 && Math.abs(dr) === 2);
+    case "k":
+      return Math.abs(df) <= 1 && Math.abs(dr) <= 1;
+    case "b":
+      return Math.abs(df) === Math.abs(dr) && !isPathBlocked(chess, pf, pr, tf, tr);
+    case "r":
+      return (df === 0 || dr === 0) && !isPathBlocked(chess, pf, pr, tf, tr);
+    case "q":
+      return (Math.abs(df) === Math.abs(dr) || df === 0 || dr === 0) &&
+             !isPathBlocked(chess, pf, pr, tf, tr);
+    default:
+      return false;
   }
 }
 
@@ -586,13 +865,17 @@ export function detectLabels(
   const moveResult = applyUci(afterBest, bestMoveUci);
   if (!moveResult) return labels;
 
-  // --- CHECKMATE: Walk the full PV and check for mate ---
+  // --- CHECKMATE: Walk PV up to 8 ply looking for forced mate ---
+  // Only label "checkmate" when mate is within 4 full moves — not when the
+  // engine line eventually ends in mate 20 moves later.
   const pvWalk = new Chess(fen);
   const movesToCheck = pvMoves.length > 0 ? pvMoves : [bestMoveUci];
+  const MAX_MATE_PLY = 6;
   let pvEndedInMate = false;
   let mateSquare: string | null = null;
 
-  for (const uci of movesToCheck) {
+  for (let mi = 0; mi < movesToCheck.length && mi < MAX_MATE_PLY; mi++) {
+    const uci = movesToCheck[mi];
     const r = applyUci(pvWalk, uci);
     if (!r) break;
     if (pvWalk.isCheckmate()) {
@@ -663,40 +946,75 @@ export function detectLabels(
     }
   }
 
-  // --- SACRIFICE: Best move gives up material ---
-  // Conditions:
-  //   a) The moved piece is now en prise (opponent can capture it), AND
-  //   b) Either no piece was captured, or captured piece is worth less
+  // --- SACRIFICE: Best move gives up net material ---
+  // A sacrifice requires: (1) the moved piece is worth ≥ 3, (2) the opponent
+  // actually recaptures it in the PV (if PV available) or can legally recapture,
+  // (3) net material loss ≥ 2 points.
+  // If the PV shows the opponent does NOT recapture (e.g. Bxf7+ Kd8 — bishop
+  // survives because opponent deals with check differently), it's not a sacrifice.
   if (movingPiece.type !== "k") {
     const movedPieceValue = PIECE_VAL[movingPiece.type] || 0;
-    const capturedValue = isCapture
-      ? PIECE_VAL[targetPiece?.type || "p"] || 1
-      : 0;
+    if (movedPieceValue >= 3) { // only track minor pieces and above as sacrifices
+      const capturedValue = isCapture
+        ? PIECE_VAL[targetPiece?.type || "p"] || 1
+        : 0;
 
-    // Check if the piece is attacked on its new square
-    const enPrise = isSquareAttacked(afterBest, to);
+      // Only consider sacrifice if net material loss is significant
+      if (movedPieceValue > capturedValue + 1) {
+        // Check PV: does the opponent actually recapture on the target square?
+        let opponentRecaptures = false;
+        if (pvMoves.length >= 2) {
+          const opponentReply = pvMoves[1];
+          const replyTo = opponentReply.slice(2, 4);
+          opponentRecaptures = replyTo === to;
+        } else {
+          // No PV — fall back to checking if legal recaptures exist
+          const legalRecaptures = afterBest
+            .moves({ verbose: true })
+            .filter((m) => m.to === to && m.captured);
+          opponentRecaptures = legalRecaptures.length > 0;
+        }
 
-    if (enPrise && movedPieceValue > capturedValue) {
-      // Piece can be taken and we didn't win material from the capture
-      if (category === "defending") {
-        labels.push("defensive_sacrifice");
-      } else {
-        labels.push("sacrifice");
+        if (opponentRecaptures) {
+          if (category === "defending") {
+            labels.push("defensive_sacrifice");
+          } else {
+            labels.push("sacrifice");
+          }
+        }
       }
     }
   }
 
-  // --- FORK: Moved piece attacks 2+ opponent pieces (including king via check) ---
+  // --- FORK: Moved piece attacks 2+ opponent pieces AND wins material ---
   {
     const attacked = getAttackedPieces(afterBest, to);
     const givesCheck = afterBest.isCheck();
 
-    // Count significant attacks (non-pawn pieces + king if in check)
-    const significantAttacks = attacked.filter((t) => t !== "p").length;
+    // Count significant attacks: exclude pawns AND king (king is counted via givesCheck)
+    const significantAttacks = attacked.filter((t) => t !== "p" && t !== "k").length;
     const totalThreats = significantAttacks + (givesCheck ? 1 : 0);
 
     if (totalThreats >= 2) {
-      labels.push("fork");
+      // Verify fork wins material by walking PV 2 plies forward
+      let forkWinsMaterial = false;
+      if (pvMoves.length >= 3) {
+        const opponentColor = moverColor === "w" ? "b" : "w";
+        const matAtFork = countMaterial(afterBest.fen());
+        const balanceAtFork = matAtFork[moverColor] - matAtFork[opponentColor];
+
+        const pvWalkFork = new Chess(afterBest.fen());
+        const r1 = applyUci(pvWalkFork, pvMoves[1]); // opponent response
+        if (r1) {
+          const r2 = applyUci(pvWalkFork, pvMoves[2]); // our follow-up capture
+          if (r2) {
+            const matAfter = countMaterial(pvWalkFork.fen());
+            const balanceAfter = matAfter[moverColor] - matAfter[opponentColor];
+            if (balanceAfter - balanceAtFork >= 1) forkWinsMaterial = true;
+          }
+        }
+      }
+      if (forkWinsMaterial) labels.push("fork");
     }
   }
 
@@ -718,12 +1036,705 @@ export function detectLabels(
   }
 
   // --- INTERMEZZO: In-between move during an expected sequence ---
-  // Heuristic: If the best move is a check or strong threat while there's
-  // an obvious recapture available, it's an intermezzo.
-  // Pattern: opponent just captured, best move is NOT recapturing but instead checks.
-  if (afterBest.isCheck() && !isCapture) {
-    // Not a recapture, gives check — likely an intermezzo
-    labels.push("intermezzo");
+  // Pattern: instead of recapturing or continuing an exchange, we insert a
+  // forcing check first, opponent responds, then we complete the sequence
+  // (capture). Requires PV evidence of the check → response → capture pattern.
+  if (afterBest.isCheck() && !isCapture && pvMoves.length >= 3) {
+    const interWalk = new Chess(fen);
+    let interValid = true;
+    for (let i = 0; i < 3 && interValid; i++) {
+      if (!applyUci(interWalk, pvMoves[i])) interValid = false;
+    }
+    if (interValid) {
+      // Position after our check + opponent response, before our 3rd move
+      const preFollow = new Chess(fen);
+      applyUci(preFollow, pvMoves[0]);
+      applyUci(preFollow, pvMoves[1]);
+      const followTo = pvMoves[2].slice(2, 4) as Square;
+      const targetOnFollow = preFollow.get(followTo);
+      // Our 3rd move must capture an opponent piece (completing the sequence)
+      if (targetOnFollow && targetOnFollow.color !== moverColor) {
+        labels.push("intermezzo");
+      }
+    }
+  }
+
+  // --- PIN: Detect any pin that the best move creates or exploits ---
+  // A pin puzzle isn't always about creating the pin — it can be about:
+  //   (a) Creating a new pin with the moved piece
+  //   (b) Adding an attacker to an already-pinned piece (exploiting the pin)
+  //   (c) Capturing a piece that a pinned piece "defends" (pinned piece can't recapture)
+  // Scans ALL our sliding pieces for absolute pins after the move.
+  {
+    const pinnedColor = moverColor === "w" ? "b" : "w";
+    const kingSquare = findKing(afterBest, pinnedColor);
+
+    if (kingSquare) {
+      const kFile = kingSquare.charCodeAt(0) - 97;
+      const kRank = parseInt(kingSquare[1]) - 1;
+      const boardAfter = afterBest.board();
+
+      // Find all absolute pins by our sliding pieces
+      const pinnedSquares: string[] = [];
+
+      for (let pr = 0; pr < 8; pr++) {
+        for (let pc = 0; pc < 8; pc++) {
+          const piece = boardAfter[pr][pc];
+          if (!piece || piece.color !== moverColor) continue;
+          if (piece.type !== "q" && piece.type !== "r" && piece.type !== "b") continue;
+
+          const pFile = pc;
+          const pRank = 7 - pr;
+          const dFile = Math.sign(kFile - pFile);
+          const dRank = Math.sign(kRank - pRank);
+
+          // Must be on the same line as the king
+          const onSameLine =
+            (dFile === 0 || dRank === 0 || Math.abs(kFile - pFile) === Math.abs(kRank - pRank)) &&
+            !(dFile === 0 && dRank === 0);
+          if (!onSameLine) continue;
+
+          // Check if this piece type can attack along this direction
+          const isDiagonal = dFile !== 0 && dRank !== 0;
+          const isStraight = dFile === 0 || dRank === 0;
+          const canPin =
+            piece.type === "q" ||
+            (piece.type === "b" && isDiagonal) ||
+            (piece.type === "r" && isStraight);
+          if (!canPin) continue;
+
+          // Walk from our piece toward the king — look for exactly one opponent piece between
+          let f = pFile + dFile;
+          let r = pRank + dRank;
+          let betweenPiece: { type: string; square: string } | null = null;
+          let foundPin = false;
+
+          while (f >= 0 && f < 8 && r >= 0 && r < 8) {
+            const sq = String.fromCharCode(97 + f) + (r + 1);
+            if (sq === kingSquare) {
+              if (betweenPiece) foundPin = true;
+              break;
+            }
+            const p = afterBest.get(sq as Square);
+            if (p) {
+              if (p.color === pinnedColor && !betweenPiece) {
+                betweenPiece = { type: p.type, square: sq };
+              } else {
+                break; // blocked
+              }
+            }
+            f += dFile;
+            r += dRank;
+          }
+
+          if (foundPin && betweenPiece && (PIECE_VAL[betweenPiece.type] || 0) >= 3) {
+            pinnedSquares.push(betweenPiece.square);
+          }
+        }
+      }
+
+      // Label "pin" if the best move interacts with any pin:
+      if (pinnedSquares.length > 0) {
+        const pinRelevant =
+          // (a) Moved piece is the pinner (it created or maintains the pin)
+          pinnedSquares.some(() => {
+            // Check if the moved piece is doing the pinning (it's a slider on the line)
+            const mp = afterBest.get(to as Square);
+            return mp && (mp.type === "q" || mp.type === "r" || mp.type === "b");
+          }) ||
+          // (b) Best move attacks a pinned piece (adding pressure)
+          pinnedSquares.some((sq) => doesPieceDefend(afterBest, to, sq)) ||
+          // (c) Best move captures on a square that a pinned piece was "defending"
+          //     (pinned piece can't recapture because it's absolutely pinned)
+          (isCapture && pinnedSquares.some((sq) => {
+            // Was the pinned piece geometrically defending the capture target before?
+            return doesPieceDefend(chess, sq, to);
+          }));
+
+        if (pinRelevant && !labels.includes("pin")) {
+          labels.push("pin");
+        }
+      }
+    }
+  }
+
+  // --- SKEWER: Best move attacks a valuable piece that must move, exposing
+  // a less valuable piece behind it on the same line ---
+  {
+    // A skewer is like a reverse pin: attack a high-value piece, capture what's behind
+    // Check: does our piece on 'to' attack a valuable opponent piece, and is there
+    // another opponent piece behind it on the same line?
+    const board = afterBest.board();
+    const attackerColor = moverColor;
+    const victimColor = attackerColor === "w" ? "b" : "w";
+    const toFile = to.charCodeAt(0) - 97;
+    const toRank = parseInt(to[1]) - 1;
+
+    if (movingPiece && (movingPiece.type === "q" || movingPiece.type === "r" || movingPiece.type === "b")) {
+      const directions: [number, number][] =
+        movingPiece.type === "r" ? [[0,1],[0,-1],[1,0],[-1,0]] :
+        movingPiece.type === "b" ? [[1,1],[1,-1],[-1,1],[-1,-1]] :
+        [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]; // queen
+
+      for (const [df, dr] of directions) {
+        let f = toFile + df;
+        let r = toRank + dr;
+        let firstPiece: { type: string; value: number } | null = null;
+        let secondPiece: { type: string; value: number } | null = null;
+
+        while (f >= 0 && f < 8 && r >= 0 && r < 8) {
+          const sq = String.fromCharCode(97 + f) + (r + 1);
+          const piece = afterBest.get(sq as Square);
+          if (piece) {
+            if (piece.color === victimColor) {
+              const val = PIECE_VAL[piece.type] || 0;
+              if (!firstPiece) {
+                firstPiece = { type: piece.type, value: val };
+              } else if (!secondPiece) {
+                secondPiece = { type: piece.type, value: val };
+                break;
+              }
+            } else {
+              break; // own piece blocks the line
+            }
+          }
+          f += df;
+          r += dr;
+        }
+
+        // Skewer: front piece must be king or high-value (rook/queen),
+        // and must be more valuable than the piece behind it
+        if (firstPiece && secondPiece) {
+          const frontIsHighValue = firstPiece.type === "k" || firstPiece.value >= 5;
+          if (frontIsHighValue && (firstPiece.type === "k" || firstPiece.value > secondPiece.value)) {
+            if (!labels.includes("skewer")) labels.push("skewer");
+          }
+        }
+      }
+    }
+  }
+
+  // --- REMOVAL OF DEFENDER: Capture a piece that was specifically defending
+  // another piece (≥ minor), leaving that piece hanging ---
+  // Uses ray-based doesPieceDefend to correctly detect defense of friendly pieces.
+  if (isCapture && targetPiece) {
+    const opponentColor = moverColor === "w" ? "b" : "w";
+    const capturedSquare = to as string;
+    const boardAfter = afterBest.board();
+
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const piece = boardAfter[r][c];
+        if (!piece || piece.color !== opponentColor || piece.type === "k") continue;
+        const sq = toSquareName(c, 7 - r);
+        const pieceValue = PIECE_VAL[piece.type] || 0;
+        if (pieceValue < 3) continue;
+
+        // Was the captured piece geometrically defending this square?
+        if (!doesPieceDefend(chess, capturedSquare, sq)) continue;
+
+        // Is this piece attacked by us after the capture?
+        if (!isSquareAttacked(afterBest, sq)) continue;
+
+        // Is this piece now undefended by any remaining opponent piece?
+        let defended = false;
+        for (let rr = 0; rr < 8 && !defended; rr++) {
+          for (let cc = 0; cc < 8 && !defended; cc++) {
+            const p = boardAfter[rr][cc];
+            if (!p || p.color !== opponentColor) continue;
+            const pSq = toSquareName(cc, 7 - rr);
+            if (pSq === sq) continue;
+            if (doesPieceDefend(afterBest, pSq, sq)) defended = true;
+          }
+        }
+        if (!defended) {
+          if (!labels.includes("removal_of_defender")) labels.push("removal_of_defender");
+          break;
+        }
+      }
+      if (labels.includes("removal_of_defender")) break;
+    }
+  }
+
+  // --- SMOTHERED MATE: Checkmate by a knight where the king is
+  // surrounded by its own pieces ---
+  if (pvEndedInMate) {
+    const mateFen = pvWalk.fen();
+    const matedColor = pvWalk.turn();
+    const matedKingSquare = findKing(pvWalk, matedColor);
+    if (matedKingSquare) {
+      // Find the piece delivering mate — should be a knight
+      const lastMoveUci = movesToCheck[movesToCheck.length - 1];
+      if (lastMoveUci) {
+        const mateDeliveredTo = lastMoveUci.slice(2, 4) as Square;
+        const matingPiece = pvWalk.get(mateDeliveredTo);
+        if (matingPiece && matingPiece.type === "n") {
+          // Check if king is surrounded by own pieces (all adjacent squares blocked)
+          const kf = matedKingSquare.charCodeAt(0) - 97;
+          const kr = parseInt(matedKingSquare[1]) - 1;
+          let allBlocked = true;
+          for (const [df, dr] of [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+            const nf = kf + df;
+            const nr = kr + dr;
+            if (nf < 0 || nf >= 8 || nr < 0 || nr >= 8) continue;
+            const sq = String.fromCharCode(97 + nf) + (nr + 1);
+            const p = pvWalk.get(sq as Square);
+            // Square must be blocked by own piece (not empty, not opponent piece)
+            if (!p || p.color !== matedColor) {
+              allBlocked = false;
+              break;
+            }
+          }
+          if (allBlocked) {
+            labels.push("smothered_mate");
+          }
+        }
+      }
+    }
+  }
+
+  // --- TRAPPED PIECE: Best move attacks a piece that has no safe squares ---
+  if (!isCapture && !afterBest.isCheck()) {
+    // After best move, check if any opponent piece is trapped (all moves lose material)
+    const opponentColor = moverColor === "w" ? "b" : "w";
+    const boardAfter = afterBest.board();
+
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const piece = boardAfter[r][c];
+        if (piece && piece.color === opponentColor && piece.type !== "k" && piece.type !== "p") {
+          const sq = String.fromCharCode(97 + c) + (8 - r);
+          const pieceValue = PIECE_VAL[piece.type] || 0;
+          if (pieceValue < 3) continue; // only track minor pieces and above
+
+          // Check if this piece is attacked
+          if (!isSquareAttacked(afterBest, sq)) continue;
+
+          // Check if it has any safe moves (moves where it doesn't lose material)
+          const fenParts = afterBest.fen().split(" ");
+          fenParts[1] = opponentColor;
+          fenParts[3] = "-";
+          try {
+            const escaped = new Chess(fenParts.join(" "));
+            const pieceMoves = escaped.moves({ square: sq as Square, verbose: true });
+            const hasSafeMove = pieceMoves.some((m) => {
+              // A "safe" move is one where the piece isn't still en prise
+              const testPos = new Chess(escaped.fen());
+              try {
+                testPos.move(m);
+                return !isSquareAttacked(testPos, m.to);
+              } catch {
+                return false;
+              }
+            });
+            if (!hasSafeMove) {
+              if (!labels.includes("trapped_piece")) labels.push("trapped_piece");
+            }
+          } catch { /* skip */ }
+        }
+      }
+      if (labels.includes("trapped_piece")) break;
+    }
+  }
+
+  // --- DESPERADO: Doomed piece captures before being taken ---
+  // The moved piece was attacked before the move, captures material, and is
+  // still en prise after — it's sacrificing itself but taking something down.
+  // Only meaningful for minor pieces and above (≥ 3 points).
+  if (isCapture && movingPiece.type !== "k" && movingPiece.type !== "p") {
+    const movedValue = PIECE_VAL[movingPiece.type] || 0;
+    const capturedValue = PIECE_VAL[targetPiece?.type || "p"] || 1;
+
+    if (movedValue >= 3) {
+      // Was the piece attacked on its original square BEFORE the move?
+      const wasAttacked = isSquareAttacked(chess, from);
+      // Is the piece still en prise AFTER the move?
+      const stillEnPrise = isSquareAttacked(afterBest, to);
+
+      if (wasAttacked && stillEnPrise && capturedValue > 0) {
+        // Piece was doomed (attacked), grabbed material on the way out
+        if (!labels.includes("desperado")) labels.push("desperado");
+      }
+    }
+  }
+
+  // --- DOUBLE ATTACK: Move creates winning threats from 2+ different pieces ---
+  // A double attack requires 2+ *different source pieces* each creating a new
+  // winning threat (SEE > 0). Distinguished from fork (one piece, multiple targets).
+  // PV must confirm material gain (opponent can't parry both threats at once).
+  {
+    const opponentColor = moverColor === "w" ? "b" : "w";
+
+    // 1. Winning threats BEFORE the move (by target square)
+    const threatsBefore = getWinningThreats(chess, moverColor);
+    const beforeTargets = new Set(threatsBefore.map(t => t.target));
+
+    // 2. Winning threats AFTER the move
+    const threatsAfter = getWinningThreats(afterBest, moverColor);
+
+    // 3. If the move gives check, add check as a threat
+    if (afterBest.isCheck()) {
+      const checkSource = findCheckingPiece(afterBest, to);
+      const kingSquare = findKing(afterBest, afterBest.turn());
+      if (checkSource && kingSquare) {
+        threatsAfter.push({
+          source: checkSource as Square,
+          target: kingSquare as Square,
+          targetType: "k",
+          gain: 0, // check is forcing, not a material threat itself
+        });
+      }
+    }
+
+    // 4. Filter to NEW threats only (target square wasn't threatened before)
+    const newThreats = threatsAfter.filter(t => !beforeTargets.has(t.target));
+
+    // 5. Must have 2+ new threats from 2+ different source pieces
+    const sourceSquares = new Set(newThreats.map(t => t.source));
+    if (sourceSquares.size >= 2 && newThreats.length >= 2) {
+      // 6. Verify material gain via PV (opponent can't parry both)
+      if (pvMoves.length >= 3) {
+        const pvCheck = new Chess(afterBest.fen());
+        const r1 = applyUci(pvCheck, pvMoves[1]); // opponent reply
+        const r2 = r1 ? applyUci(pvCheck, pvMoves[2]) : null; // our capture
+        if (r2) {
+          const matBefore = countMaterial(afterBest.fen());
+          const matAfter = countMaterial(pvCheck.fen());
+          const balBefore = matBefore[moverColor] - matBefore[opponentColor];
+          const balAfter = matAfter[moverColor] - matAfter[opponentColor];
+          if (balAfter - balBefore >= 1) {
+            if (!labels.includes("double_attack")) labels.push("double_attack");
+          }
+        }
+      }
+    }
+  }
+
+  // --- X-RAY: Battery — two friendly sliders aligned on same ray through move ---
+  // After the best move, a friendly sliding piece sits behind the moved piece
+  // on the same ray, and an opponent target is ahead.
+  if (movingPiece.type === "q" || movingPiece.type === "r" || movingPiece.type === "b") {
+    const toFile = to.charCodeAt(0) - 97;
+    const toRank = parseInt(to[1]) - 1;
+    const directions = getDirectionsForPiece(movingPiece.type);
+
+    for (const [df, dr] of directions) {
+      // Look behind the moved piece for a friendly slider
+      let bf = toFile - df;
+      let br = toRank - dr;
+      let behindPiece: { type: string; square: string } | null = null;
+
+      while (bf >= 0 && bf < 8 && br >= 0 && br < 8) {
+        const sq = toSquareName(bf, br);
+        const p = afterBest.get(sq as Square);
+        if (p) {
+          if (p.color === moverColor && canSlideOnDirection(p.type, df, dr)) {
+            behindPiece = { type: p.type, square: sq };
+          }
+          break; // first piece found (whether friend or foe)
+        }
+        bf -= df;
+        br -= dr;
+      }
+
+      if (!behindPiece) continue;
+
+      // Look ahead for an opponent target
+      let af = toFile + df;
+      let ar = toRank + dr;
+      while (af >= 0 && af < 8 && ar >= 0 && ar < 8) {
+        const sq = toSquareName(af, ar);
+        const p = afterBest.get(sq as Square);
+        if (p) {
+          if (p.color !== moverColor && ((PIECE_VAL[p.type] || 0) >= 5 || p.type === "k")) {
+            // Battery: friendly slider behind, high-value opponent target ahead
+            if (!labels.includes("x_ray")) labels.push("x_ray");
+          }
+          break;
+        }
+        af += df;
+        ar += dr;
+      }
+
+      if (labels.includes("x_ray")) break;
+    }
+  }
+
+  // --- CLEARANCE: Move clears a line for another friendly piece ---
+  // The moved piece was blocking a friendly slider's ray to an opponent target.
+  // After the move, that slider now has a clear line to the target.
+  {
+    const fromFile = from.charCodeAt(0) - 97;
+    const fromRank = parseInt(from[1]) - 1;
+    const allDirs: [number, number][] = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+
+    for (const [df, dr] of allDirs) {
+      // Look behind the from-square for a friendly slider
+      let bf = fromFile - df;
+      let br = fromRank - dr;
+      let slider: { type: string; square: string } | null = null;
+
+      while (bf >= 0 && bf < 8 && br >= 0 && br < 8) {
+        const sq = toSquareName(bf, br);
+        const p = chess.get(sq as Square); // position BEFORE the move
+        if (p) {
+          if (p.color === moverColor && canSlideOnDirection(p.type, df, dr)) {
+            slider = { type: p.type, square: sq };
+          }
+          break;
+        }
+        bf -= df;
+        br -= dr;
+      }
+
+      if (!slider) continue;
+
+      // Look ahead (in original position) — the from square was blocking.
+      // After the move, check if there's now a clear path to an opponent target.
+      let af = fromFile + df;
+      let ar = fromRank + dr;
+      let foundTarget = false;
+      while (af >= 0 && af < 8 && ar >= 0 && ar < 8) {
+        const sq = toSquareName(af, ar);
+        const p = afterBest.get(sq as Square); // position AFTER the move
+        if (p) {
+          if (p.color !== moverColor && ((PIECE_VAL[p.type] || 0) >= 5 || p.type === "k")) {
+            foundTarget = true;
+          }
+          break;
+        }
+        af += df;
+        ar += dr;
+      }
+
+      if (foundTarget) {
+        // Verify the slider couldn't reach this target before (from-square was blocking)
+        if (!labels.includes("clearance")) labels.push("clearance");
+        break;
+      }
+    }
+  }
+
+  // --- OVERLOAD: Opponent piece is sole defender of 2+ attacked targets ---
+  // After the best move, find opponent pieces attacked by us. If two or more
+  // share the same sole defender, that defender is overloaded.
+  {
+    const opponentColor = moverColor === "w" ? "b" : "w";
+    const boardAfter = afterBest.board();
+    const ourAttacks = getAttackedSquares(afterBest, moverColor);
+
+    // Collect attacked opponent pieces and their defenders
+    const attackedWithDefenders: { sq: string; defenders: string[] }[] = [];
+
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const piece = boardAfter[r][c];
+        if (!piece || piece.color !== opponentColor || piece.type === "k") continue;
+        const sq = toSquareName(c, 7 - r);
+        if (!ourAttacks.has(sq)) continue; // not attacked by us
+
+        const defenders = findDefenders(afterBest, sq, opponentColor);
+        attackedWithDefenders.push({ sq, defenders });
+      }
+    }
+
+    // Check if any single defender is sole protector of 2+ attacked pieces
+    const defenderLoad: Record<string, number> = {};
+    for (const item of attackedWithDefenders) {
+      if (item.defenders.length === 1) {
+        const d = item.defenders[0];
+        defenderLoad[d] = (defenderLoad[d] || 0) + 1;
+      }
+    }
+
+    for (const count of Object.values(defenderLoad)) {
+      if (count >= 2) {
+        if (!labels.includes("overload")) labels.push("overload");
+        break;
+      }
+    }
+  }
+
+  // --- INTERFERENCE: Place piece between two connected opponent pieces ---
+  // After the move, the moved piece sits on a ray between two opponent pieces,
+  // severing a defensive connection.
+  {
+    const opponentColor = moverColor === "w" ? "b" : "w";
+    const toFile = to.charCodeAt(0) - 97;
+    const toRank = parseInt(to[1]) - 1;
+    const allDirs: [number, number][] = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]];
+
+    for (const [df, dr] of allDirs) {
+      // Look in one direction for an opponent piece
+      let f1 = toFile + df;
+      let r1 = toRank + dr;
+      let piece1: { type: string; square: string } | null = null;
+
+      while (f1 >= 0 && f1 < 8 && r1 >= 0 && r1 < 8) {
+        const sq = toSquareName(f1, r1);
+        const p = afterBest.get(sq as Square);
+        if (p) {
+          if (p.color === opponentColor) {
+            piece1 = { type: p.type, square: sq };
+          }
+          break;
+        }
+        f1 += df;
+        r1 += dr;
+      }
+
+      if (!piece1) continue;
+
+      // Look in the opposite direction for another opponent piece
+      let f2 = toFile - df;
+      let r2 = toRank - dr;
+      let piece2: { type: string; square: string } | null = null;
+
+      while (f2 >= 0 && f2 < 8 && r2 >= 0 && r2 < 8) {
+        const sq = toSquareName(f2, r2);
+        const p = afterBest.get(sq as Square);
+        if (p) {
+          if (p.color === opponentColor) {
+            piece2 = { type: p.type, square: sq };
+          }
+          break;
+        }
+        f2 -= df;
+        r2 -= dr;
+      }
+
+      if (!piece2) continue;
+
+      // Check if one was defending the other BEFORE the move
+      // (i.e., they were connected on this ray before we placed our piece)
+      const defendersBefore1 = findDefenders(chess, piece1.square, opponentColor);
+      const defendersBefore2 = findDefenders(chess, piece2.square, opponentColor);
+
+      const wasConnected =
+        defendersBefore1.includes(piece2.square) ||
+        defendersBefore2.includes(piece1.square);
+
+      if (wasConnected) {
+        // Verify the connection is now severed
+        const defendersAfter1 = findDefenders(afterBest, piece1.square, opponentColor);
+        const defendersAfter2 = findDefenders(afterBest, piece2.square, opponentColor);
+
+        const nowSevered =
+          (!defendersAfter1.includes(piece2.square) && defendersBefore1.includes(piece2.square)) ||
+          (!defendersAfter2.includes(piece1.square) && defendersBefore2.includes(piece1.square));
+
+        if (nowSevered) {
+          if (!labels.includes("interference")) labels.push("interference");
+          break;
+        }
+      }
+    }
+  }
+
+  // --- DEFLECTION: Force defender away from its duty (requires PV) ---
+  // Our FORCING move (check/capture) compels a defender to abandon its post,
+  // and our follow-up captures the now-undefended target.
+  if (pvMoves.length >= 3 && (afterBest.isCheck() || isCapture)) {
+    const pvMove1 = pvMoves[0];
+    const pvMove2 = pvMoves[1]; // opponent's forced response
+    const pvMove3 = pvMoves[2]; // our follow-up capture
+
+    if (pvMove2 && pvMove3) {
+      const defenderFrom = pvMove2.slice(0, 2);
+      const captureTarget = pvMove3.slice(2, 4);
+      const opponentColor = moverColor === "w" ? "b" : "w";
+
+      const afterOurMove = new Chess(fen);
+      const r1 = applyUci(afterOurMove, pvMove1);
+      if (r1) {
+        // Was the piece that moves in pvMove2 defending the capture target?
+        if (doesPieceDefend(afterOurMove, defenderFrom, captureTarget)) {
+          const afterDeflect = new Chess(afterOurMove.fen());
+          const r2 = applyUci(afterDeflect, pvMove2);
+          if (r2) {
+            const targetPieceNow = afterDeflect.get(captureTarget as Square);
+            if (targetPieceNow && targetPieceNow.color === opponentColor &&
+                (PIECE_VAL[targetPieceNow.type] || 0) >= 3) {
+              // Check if any remaining opponent piece still defends the target
+              let stillDefended = false;
+              const boardD = afterDeflect.board();
+              for (let rr = 0; rr < 8 && !stillDefended; rr++) {
+                for (let cc = 0; cc < 8 && !stillDefended; cc++) {
+                  const p = boardD[rr][cc];
+                  if (!p || p.color !== opponentColor) continue;
+                  const pSq = toSquareName(cc, 7 - rr);
+                  if (pSq === captureTarget) continue;
+                  if (doesPieceDefend(afterDeflect, pSq, captureTarget)) {
+                    stillDefended = true;
+                  }
+                }
+              }
+              if (!stillDefended) {
+                if (!labels.includes("deflection")) labels.push("deflection");
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // --- ATTRACTION: Force piece (esp. king) to a vulnerable square (requires PV) ---
+  // Best move is forcing (check/capture), opponent is drawn to a bad square,
+  // and the next move exploits the new position.
+  if (pvMoves.length >= 3) {
+    const pvMove1 = pvMoves[0]; // our forcing move
+    const pvMove2 = pvMoves[1]; // opponent's forced reply (attracted to square)
+    const pvMove3 = pvMoves[2]; // our exploitation
+
+    if (pvMove2 && pvMove3) {
+      // Our move must be forcing: check or capture
+      const isForcingCheck = afterBest.isCheck();
+      const isForcingCapture = isCapture;
+
+      if (isForcingCheck || isForcingCapture) {
+        const attractedTo = pvMove2.slice(2, 4); // square the opponent piece moves to
+        const attractedFrom = pvMove2.slice(0, 2);
+        const exploitTarget = pvMove3.slice(2, 4); // what we exploit
+
+        // Apply PV to position after opponent responds
+        const afterResponse = new Chess(afterBest.fen());
+        const r2 = applyUci(afterResponse, pvMove2);
+        if (r2) {
+          // The attracted piece is now on a worse square — verify by checking
+          // if our follow-up attacks it or exploits its new position
+          const opponentColor = moverColor === "w" ? "b" : "w";
+
+          // Check if the attracted piece is the king (classic attraction)
+          const attractedPiece = afterResponse.get(attractedTo as Square);
+          const isKingAttraction = attractedPiece?.type === "k";
+
+          // Apply our exploitation move
+          const afterExploit = new Chess(afterResponse.fen());
+          const r3 = applyUci(afterExploit, pvMove3);
+          if (r3) {
+            // Exploitation: check, checkmate, or capture near the attracted piece
+            const exploitIsCheck = afterExploit.isCheck();
+            const exploitIsMate = afterExploit.isCheckmate();
+            const exploitIsCapture = !!afterResponse.get(exploitTarget as Square);
+
+            if (exploitIsMate || exploitIsCheck || exploitIsCapture) {
+              if (isKingAttraction) {
+                // King attraction: any forcing follow-up (check, mate, capture) qualifies
+                if (!labels.includes("attraction")) labels.push("attraction");
+              } else if (exploitIsMate) {
+                if (!labels.includes("attraction")) labels.push("attraction");
+              } else if (exploitIsCapture) {
+                const capturedTarget = afterResponse.get(exploitTarget as Square);
+                if (capturedTarget && (PIECE_VAL[capturedTarget.type] || 0) >= 3) {
+                  if (!labels.includes("attraction")) labels.push("attraction");
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   return labels;

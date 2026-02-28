@@ -196,21 +196,37 @@ router.get(
         ...ratedFilter,
       };
 
-      const statsLimit = Math.min(Number(req.query.limit) || 40, 200);
+      const statsLimit = Math.min(Number(req.query.limit) || 100, 200);
       const recentGames = await prisma.game.findMany({
         where: baseWhere,
-        select: { id: true, result: true, accuracyWhite: true, accuracyBlack: true },
+        select: { id: true, result: true, accuracyWhite: true, accuracyBlack: true, pgn: true },
         orderBy: { endDate: "desc" },
         take: statsLimit,
       });
 
       const counts = { WIN: 0, LOSS: 0, DRAW: 0 };
+      const asWhite = { WIN: 0, LOSS: 0, DRAW: 0, total: 0, accSum: 0, accCount: 0 };
+      const asBlack = { WIN: 0, LOSS: 0, DRAW: 0, total: 0, accSum: 0, accCount: 0 };
       let whiteSum = 0, whiteCount = 0, blackSum = 0, blackCount = 0;
+      const playerAccuracies: number[] = [];
+      const userLower = username.toLowerCase();
 
       for (const g of recentGames) {
         counts[g.result]++;
         if (g.accuracyWhite != null) { whiteSum += g.accuracyWhite; whiteCount++; }
         if (g.accuracyBlack != null) { blackSum += g.accuracyBlack; blackCount++; }
+
+        const whiteMatch = g.pgn.match(/\[White\s+"([^"]+)"\]/i);
+        const playedWhite = whiteMatch && whiteMatch[1].toLowerCase() === userLower;
+        if (playedWhite) {
+          asWhite[g.result]++;
+          asWhite.total++;
+          if (g.accuracyWhite != null) { asWhite.accSum += g.accuracyWhite; asWhite.accCount++; playerAccuracies.push(g.accuracyWhite); }
+        } else {
+          asBlack[g.result]++;
+          asBlack.total++;
+          if (g.accuracyBlack != null) { asBlack.accSum += g.accuracyBlack; asBlack.accCount++; playerAccuracies.push(g.accuracyBlack); }
+        }
       }
 
       const totalGames = recentGames.length;
@@ -218,6 +234,29 @@ router.get(
 
       const avgWhite = whiteCount > 0 ? whiteSum / whiteCount : null;
       const avgBlack = blackCount > 0 ? blackSum / blackCount : null;
+
+      const median = (arr: number[]): number | null => {
+        if (arr.length === 0) return null;
+        const sorted = [...arr].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+      };
+
+      const playerAvg = playerAccuracies.length > 0
+        ? round2(playerAccuracies.reduce((a, b) => a + b, 0) / playerAccuracies.length)
+        : null;
+      const playerMedian = median(playerAccuracies) != null ? round2(median(playerAccuracies)!) : null;
+
+      const buildSideResults = (s: typeof asWhite) => ({
+        total: s.total,
+        wins: s.WIN,
+        losses: s.LOSS,
+        draws: s.DRAW,
+        winRate: s.total ? round2((s.WIN / s.total) * 100) : 0,
+        lossRate: s.total ? round2((s.LOSS / s.total) * 100) : 0,
+        drawRate: s.total ? round2((s.DRAW / s.total) * 100) : 0,
+        accuracy: s.accCount > 0 ? round2(s.accSum / s.accCount) : null,
+      });
 
       res.json({
         totalGames,
@@ -228,6 +267,10 @@ router.get(
           winRate: totalGames ? round2((counts.WIN / totalGames) * 100) : 0,
           lossRate: totalGames ? round2((counts.LOSS / totalGames) * 100) : 0,
           drawRate: totalGames ? round2((counts.DRAW / totalGames) * 100) : 0,
+        },
+        byColor: {
+          white: buildSideResults(asWhite),
+          black: buildSideResults(asBlack),
         },
         accuracy: {
           white: avgWhite != null ? round2(avgWhite) : null,
@@ -240,6 +283,8 @@ router.get(
                 : avgBlack != null
                   ? round2(avgBlack)
                   : null,
+          overallAvg: playerAvg,
+          overallMedian: playerMedian,
         },
       });
     } catch (err) {

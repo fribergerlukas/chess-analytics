@@ -2,6 +2,7 @@ import { Side } from "@prisma/client";
 import prisma from "../lib/prisma";
 import { analyzePv } from "./puzzlePv";
 import { classifyPuzzle, ClassificationContext } from "./puzzleClassification";
+import { matchesCategory } from "../lib/timeControl";
 
 const MISTAKE_THRESHOLD = 150;
 
@@ -117,6 +118,9 @@ export async function generateGamePuzzles(
 
     const classification = classifyPuzzle(ctx);
 
+    // Opening override: ply <= 24 → "opening" (aligns with arena card categories)
+    const category = pos.ply <= 24 ? "opening" : classification.category;
+
     await prisma.puzzle.create({
       data: {
         userId,
@@ -132,7 +136,7 @@ export async function generateGamePuzzles(
         evalBeforeCp,
         evalAfterCp,
         deltaCp,
-        category: classification.category,
+        category,
         severity: classification.severity,
         labels: classification.labels,
       },
@@ -148,13 +152,31 @@ export async function generateGamePuzzles(
  * Generate puzzles for all games belonging to a user.
  * Only processes games that have been parsed and have evaluated positions.
  */
-export async function generateUserPuzzles(username: string): Promise<number> {
+export async function generateUserPuzzles(
+  username: string,
+  gameLimit?: number,
+  timeCategory?: string
+): Promise<number> {
   const user = await prisma.user.findFirst({
     where: { username: username.toLowerCase() },
   });
 
   if (!user) {
     throw new Error(`User "${username}" not found`);
+  }
+
+  // Build time control filter if timeCategory provided
+  let timeControlFilter: Record<string, unknown> | undefined;
+  if (timeCategory) {
+    const allTCs = await prisma.game.findMany({
+      where: { userId: user.id },
+      select: { timeControl: true },
+      distinct: ["timeControl"],
+    });
+    const matching = allTCs
+      .map((g) => g.timeControl)
+      .filter((tc) => matchesCategory(tc, timeCategory.toLowerCase()));
+    timeControlFilter = { timeControl: { in: matching } };
   }
 
   const games = await prisma.game.findMany({
@@ -164,9 +186,11 @@ export async function generateUserPuzzles(username: string): Promise<number> {
       positions: {
         some: { eval: { not: null }, cpLoss: { gte: MISTAKE_THRESHOLD } },
       },
+      ...timeControlFilter,
     },
     select: { id: true, pgn: true },
     orderBy: { endDate: "desc" },
+    ...(gameLimit ? { take: gameLimit } : {}),
   });
 
   let totalCreated = 0;

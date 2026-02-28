@@ -18,12 +18,12 @@ interface CategoryDataPoint {
   attacking: number;
   defending: number;
   tactics: number;
-  positional: number;
+  strategic: number;
   opening: number;
   endgame: number;
 }
 
-const CATEGORIES = ["attacking", "defending", "tactics", "positional", "opening", "endgame"] as const;
+const CATEGORIES = ["attacking", "defending", "tactics", "strategic", "opening", "endgame"] as const;
 
 function main() {
   const dataPath = path.join(__dirname, "../../category-score-data.json");
@@ -43,7 +43,7 @@ function main() {
   }
 
   // Compute averages per bracket
-  const curvePoints: { rating: number; attacking: number; defending: number; tactics: number; positional: number; opening: number; endgame: number }[] = [];
+  const curvePoints: { rating: number; attacking: number; defending: number; tactics: number; strategic: number; opening: number; endgame: number }[] = [];
 
   for (const [bracket, points] of brackets) {
     const avgRating = Math.round(points.reduce((s, p) => s + p.rating, 0) / points.length);

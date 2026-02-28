@@ -14,7 +14,8 @@ const LEGACY_MAP: Record<string, string> = {
   resilience: "defending",
   advantage_capitalisation: "attacking",
   opportunity_creation: "tactics",
-  precision_only_move: "positional",
+  precision_only_move: "strategic",
+  positional: "strategic",
   capitalization: "attacking",
 };
 

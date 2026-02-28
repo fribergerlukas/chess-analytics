@@ -4,6 +4,7 @@ import { evaluateGamePositions } from "./evaluation";
 import { detectGameBlunders } from "./blunders";
 import { generateGamePuzzles } from "./puzzles";
 import { computeGameAccuracy } from "./accuracy";
+import { classifyPositionCategory } from "./positionCategory";
 import { Side } from "@prisma/client";
 
 interface UserJob {
@@ -82,6 +83,9 @@ async function runEvalPipeline(userId: number, username: string, job: UserJob) {
       // Compute per-game accuracy from Stockfish data (works for all users, no chess.com membership needed)
       await computeGameAccuracy(game.id);
 
+      // Classify position categories (defending, attacking, tactics, etc.)
+      await classifyGamePositionCategories(game.id);
+
       // Generate puzzles for this game immediately
       const userSide = getUserSide(game.pgn, username) ?? undefined;
       const created = await generateGamePuzzles(game.id, userId, userSide);
@@ -96,6 +100,37 @@ async function runEvalPipeline(userId: number, username: string, job: UserJob) {
 
   job.status = "done";
   console.log(`[bg-eval] ${username} — complete. ${job.puzzlesCreated} puzzles created from ${job.totalGames} games.`);
+}
+
+/**
+ * Classify all evaluated positions for a game into categories.
+ * Fetches positions with eval data, runs classifyPositionCategory on each,
+ * and batch-updates the category field.
+ */
+async function classifyGamePositionCategories(gameId: number): Promise<void> {
+  const positions = await prisma.position.findMany({
+    where: { gameId, eval: { not: null }, category: null },
+    select: { id: true, fen: true, ply: true, eval: true, sideToMove: true, bestMoveUci: true, pv: true },
+  });
+
+  if (positions.length === 0) return;
+
+  const updates = positions.map((pos) => {
+    const category = classifyPositionCategory({
+      fen: pos.fen,
+      ply: pos.ply,
+      eval: pos.eval,
+      sideToMove: pos.sideToMove,
+      bestMoveUci: pos.bestMoveUci,
+      pv: pos.pv,
+    });
+    return prisma.position.update({
+      where: { id: pos.id },
+      data: { category },
+    });
+  });
+
+  await prisma.$transaction(updates);
 }
 
 export function getJobStatus(username: string): UserJob | null {

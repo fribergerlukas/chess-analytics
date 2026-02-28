@@ -20,7 +20,7 @@ router.get(
       const username = typeof req.params.username === "string"
         ? req.params.username
         : String(req.params.username);
-      const { timeCategory, chessRating, title, rated, limit } = req.query;
+      const { timeCategory, chessRating, title, rated, limit, playerSide } = req.query;
 
       if (!timeCategory || typeof timeCategory !== "string") {
         res.status(400).json({ error: "timeCategory query param is required" });
@@ -58,8 +58,8 @@ router.get(
         .map((g) => g.timeControl)
         .filter((tc) => matchesCategory(tc, timeCategory.toLowerCase()));
 
-      // Fetch games for this time category (default 40, max 100)
-      const gameLimit = Math.min(Math.max(Number(limit) || 40, 1), 100);
+      // Fetch games for this time category (always 100)
+      const gameLimit = Math.min(Math.max(Number(limit) || 100, 1), 100);
       const games = await prisma.game.findMany({
         where: {
           ...gameWhere,
@@ -91,8 +91,20 @@ router.get(
         gamePlayerSide[g.id] = isWhite ? "WHITE" : "BLACK";
       }
 
+      // Filter games by player side if requested
+      let filteredGames = games;
+      if (playerSide === "white" || playerSide === "black") {
+        const sideUpper = playerSide.toUpperCase() as "WHITE" | "BLACK";
+        filteredGames = games.filter((g) => gamePlayerSide[g.id] === sideUpper);
+      }
+
+      if (filteredGames.length === 0) {
+        res.status(404).json({ error: "No games found for this side/time category" });
+        return;
+      }
+
       // Batch fetch all positions for these games
-      const gameIds = games.map((g) => g.id);
+      const gameIds = filteredGames.map((g) => g.id);
       const positions = await prisma.position.findMany({
         where: {
           gameId: { in: gameIds },
@@ -110,6 +122,7 @@ router.get(
           classification: true,
           bestMoveUci: true,
           pv: true,
+          category: true,
         },
         orderBy: { ply: "asc" },
       });
@@ -118,7 +131,7 @@ router.get(
 
       const result = computeArenaStats(
         positions as any,
-        games,
+        filteredGames,
         rating,
         titleStr,
         gamePlayerSide,

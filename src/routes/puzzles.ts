@@ -3,6 +3,8 @@ import prisma from "../lib/prisma";
 import { matchesCategory } from "../lib/timeControl";
 import { generateUserPuzzles } from "../services/puzzles";
 import { getJobStatus } from "../services/backgroundEval";
+import { StockfishEngine } from "../services/stockfish";
+import { classifyPuzzle } from "../services/puzzleClassification";
 
 const router = Router();
 
@@ -21,7 +23,7 @@ function str(val: unknown): string {
  *   timeCategory — "bullet" | "blitz" | "rapid" (filter by game time control)
  *   rated        — "true" | "false" (filter by rated/unrated; omit for all)
  *   minMoves     — minimum required user moves (default 1; use 2 for multi-move only)
- *   category     — "defending" | "attacking" | "tactics" | "positional" (filter by puzzle category)
+ *   category     — "defending" | "attacking" | "tactics" | "endgame" | "strategic" (filter by puzzle category)
  *   maxEvalBefore — max cp deficit before the move (default 300, filters hopeless positions)
  */
 router.get(
@@ -29,13 +31,14 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const username = str(req.params.username);
-      const limit = Math.min(Number(req.query.limit) || 20, 100);
+      const limit = Math.min(Number(req.query.limit) || 500, 500);
       const offset = Number(req.query.offset) || 0;
       const timeCategory = typeof req.query.timeCategory === "string" ? req.query.timeCategory : undefined;
       const ratedParam = typeof req.query.rated === "string" ? req.query.rated : undefined;
       const minMoves = Number(req.query.minMoves) || 1;
       const categoryParam = typeof req.query.category === "string" ? req.query.category : undefined;
       const severityParam = typeof req.query.severity === "string" ? req.query.severity : undefined;
+      const labelParam = typeof req.query.label === "string" ? req.query.label : undefined;
       const maxEvalBefore = Number(req.query.maxEvalBefore) || 300;
 
       const user = await prisma.user.findFirst({
@@ -74,6 +77,7 @@ router.get(
         ...(minMoves > 1 ? { requiredMoves: { gte: minMoves } } : {}),
         ...(categoryParam ? { category: categoryParam } : {}),
         ...(severityParam ? { severity: severityParam } : {}),
+        ...(labelParam ? { labels: { has: labelParam } } : {}),
       };
 
       const allPuzzles = await prisma.puzzle.findMany({
@@ -130,7 +134,9 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const username = str(req.params.username);
-      const created = await generateUserPuzzles(username);
+      const gameLimit = Number(req.query.gameLimit) || undefined;
+      const timeCategory = typeof req.query.timeCategory === "string" ? req.query.timeCategory : undefined;
+      const created = await generateUserPuzzles(username, gameLimit, timeCategory);
 
       // Include background eval status so frontend knows if more are coming
       const job = getJobStatus(username);
@@ -170,6 +176,82 @@ router.get(
       totalGames: job.totalGames,
       puzzlesCreated: job.puzzlesCreated,
     });
+  }
+);
+
+/**
+ * GET /users/:username/puzzles/summary
+ *
+ * Returns puzzle category distribution for the N most recent games.
+ * Query params:
+ *   gameLimit    — number of most recent games to include (default: all)
+ *   timeCategory — "bullet" | "blitz" | "rapid" (filter by game time control)
+ */
+router.get(
+  "/users/:username/puzzles/summary",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const username = str(req.params.username);
+      const gameLimit = Number(req.query.gameLimit) || undefined;
+      const timeCategory = typeof req.query.timeCategory === "string" ? req.query.timeCategory : undefined;
+
+      const user = await prisma.user.findFirst({
+        where: { username: username.toLowerCase() },
+      });
+
+      if (!user) {
+        res.status(404).json({ error: `User "${username}" not found` });
+        return;
+      }
+
+      // Build time control filter
+      let timeControlFilter: Record<string, unknown> | undefined;
+      if (timeCategory) {
+        const allTCs = await prisma.game.findMany({
+          where: { userId: user.id },
+          select: { timeControl: true },
+          distinct: ["timeControl"],
+        });
+        const matching = allTCs
+          .map((g) => g.timeControl)
+          .filter((tc) => matchesCategory(tc, timeCategory.toLowerCase()));
+        timeControlFilter = { timeControl: { in: matching } };
+      }
+
+      // Find the N most recent game IDs
+      const games = await prisma.game.findMany({
+        where: { userId: user.id, ...timeControlFilter },
+        select: { id: true },
+        orderBy: { endDate: "desc" },
+        ...(gameLimit ? { take: gameLimit } : {}),
+      });
+
+      const gameIds = games.map((g) => g.id);
+      const gamesAnalyzed = gameIds.length;
+
+      // Count puzzles per category for those games
+      const puzzles = await prisma.puzzle.findMany({
+        where: {
+          userId: user.id,
+          gameId: { in: gameIds },
+        },
+        select: { category: true },
+      });
+
+      const byCategory: Record<string, number> = {};
+      for (const p of puzzles) {
+        const cat = p.category || "uncategorized";
+        byCategory[cat] = (byCategory[cat] || 0) + 1;
+      }
+
+      res.json({
+        total: puzzles.length,
+        gamesAnalyzed,
+        byCategory,
+      });
+    } catch (err) {
+      next(err);
+    }
   }
 );
 
@@ -320,6 +402,94 @@ router.post(
         pv: puzzle.pv,
         requiredMoves: puzzle.requiredMoves,
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /eval?fen=...&depth=...
+ *
+ * Evaluates a FEN position with Stockfish.
+ * Returns score in centipawns from WHITE's perspective.
+ * Serialized: only one evaluation runs at a time. If the client
+ * disconnects while waiting in the queue, the request is skipped.
+ */
+let evalEngine: StockfishEngine | null = null;
+let evalLock: Promise<void> = Promise.resolve();
+
+async function getEvalEngine(): Promise<StockfishEngine> {
+  if (!evalEngine) {
+    evalEngine = new StockfishEngine();
+    await evalEngine.init();
+  }
+  return evalEngine;
+}
+
+router.get(
+  "/eval",
+  async (req: Request, res: Response, next: NextFunction) => {
+    const fen = typeof req.query.fen === "string" ? req.query.fen : undefined;
+    if (!fen) {
+      res.status(400).json({ error: "fen parameter is required" });
+      return;
+    }
+
+    const depth = Math.min(Number(req.query.depth) || 16, 20);
+
+    // Queue behind any in-progress evaluation
+    const prevLock = evalLock;
+    let releaseLock!: () => void;
+    evalLock = new Promise((resolve) => { releaseLock = resolve; });
+    await prevLock;
+
+    // Client disconnected while waiting — skip evaluation
+    if (req.socket.destroyed) {
+      releaseLock();
+      return;
+    }
+
+    try {
+      const engine = await getEvalEngine();
+      const result = await engine.evaluate(fen, depth);
+
+      // Convert score to WHITE's perspective (Stockfish returns side-to-move perspective)
+      const sideToMove = fen.split(" ")[1];
+      const cpWhite = sideToMove === "b" ? -result.score : result.score;
+
+      if (!req.socket.destroyed) {
+        res.json({ eval: cpWhite, depth: result.depth, bestMove: result.bestMove });
+      }
+    } catch (err) {
+      if (!req.socket.destroyed) next(err);
+    } finally {
+      releaseLock();
+    }
+  }
+);
+
+/**
+ * POST /classify-test
+ *
+ * Run the puzzle classifier on an arbitrary position.
+ * Body: { fen, bestMoveUci, pvMoves?, evalBeforeCp, evalAfterCp, sideToMove }
+ */
+router.post(
+  "/classify-test",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { fen, bestMoveUci, pvMoves, evalBeforeCp, evalAfterCp, sideToMove } = req.body;
+      const ctx = {
+        fen,
+        bestMoveUci,
+        pvMoves: pvMoves || [],
+        evalBeforeCp,
+        evalAfterCp,
+        sideToMove,
+      };
+      const result = classifyPuzzle(ctx);
+      res.json(result);
     } catch (err) {
       next(err);
     }

@@ -28,6 +28,8 @@ export async function fetchGames(
 ): Promise<{ games: ChesscomGame[] }> {
   const res = await fetch(archiveUrl);
   if (!res.ok) {
+    // Empty or unavailable archive (e.g. current month with no games) — return empty
+    if (res.status === 404) return { games: [] };
     throw new Error(`Failed to fetch games from archive`);
   }
   return res.json() as Promise<{ games: ChesscomGame[] }>;
@@ -72,7 +74,7 @@ function computeResult(game: ChesscomGame, username: string): Result {
 const DEFAULT_MAX_GAMES = 100;
 
 export async function importGames(username: string, timeCategory?: string, rated?: boolean, maxGames?: number): Promise<number> {
-  const MAX_GAMES = Math.min(maxGames || DEFAULT_MAX_GAMES, 200);
+  const MAX_GAMES = Math.min(maxGames || DEFAULT_MAX_GAMES, 500);
   await validateUser(username);
 
   const user = await prisma.user.upsert({
@@ -141,25 +143,16 @@ export async function importGames(username: string, timeCategory?: string, rated
   for (const game of recentGames) {
     const externalId = game.url;
 
-    const existing = await prisma.game.findUnique({
+    const result = await prisma.game.upsert({
       where: { externalId },
-    });
-    if (existing) {
-      // Update accuracy if chess.com now provides it
-      if (existing.accuracyWhite == null && game.accuracies) {
-        await prisma.game.update({
-          where: { id: existing.id },
-          data: {
-            accuracyWhite: game.accuracies.white,
-            accuracyBlack: game.accuracies.black,
-          },
-        });
-      }
-      continue;
-    }
-
-    await prisma.game.create({
-      data: {
+      update: {
+        // Update accuracy if chess.com now provides it
+        ...(game.accuracies ? {
+          accuracyWhite: game.accuracies.white,
+          accuracyBlack: game.accuracies.black,
+        } : {}),
+      },
+      create: {
         externalId,
         userId: user.id,
         endDate: new Date(game.end_time * 1000),
@@ -172,7 +165,8 @@ export async function importGames(username: string, timeCategory?: string, rated
       },
     });
 
-    imported++;
+    // Count only newly created games
+    if (result.createdAt.getTime() >= Date.now() - 5000) imported++;
   }
 
   return imported;

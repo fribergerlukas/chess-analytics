@@ -71,11 +71,13 @@ model Position {
   pv             String?
   cpLoss         Float?
   classification MoveClassification?
+  category       String?
   createdAt      DateTime @default(now())
   puzzles        Puzzle[]
 
   @@index([gameId])
   @@index([fen, gameId])
+  @@index([gameId, category])
 }
 
 model Puzzle {

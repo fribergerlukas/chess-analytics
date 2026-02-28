@@ -31,7 +31,7 @@ interface CategoryDataPoint {
   attacking: number;
   defending: number;
   tactics: number;
-  positional: number;
+  strategic: number;
   opening: number;
   endgame: number;
 }
@@ -161,7 +161,7 @@ async function main() {
       attacking: stats.categories.attacking.successRate,
       defending: stats.categories.defending.successRate,
       tactics: stats.categories.tactics.successRate,
-      positional: stats.categories.positional.successRate,
+      strategic: stats.categories.strategic.successRate,
       opening: stats.categories.opening.successRate,
       endgame: stats.categories.endgame.successRate,
     };
@@ -170,7 +170,7 @@ async function main() {
     console.log(
       `[${i + 1}/${players.length}] ${username} (${rating}, ${bracket}): ` +
       `ATK=${point.attacking.toFixed(1)} DEF=${point.defending.toFixed(1)} ` +
-      `TAC=${point.tactics.toFixed(1)} POS=${point.positional.toFixed(1)} ` +
+      `TAC=${point.tactics.toFixed(1)} POS=${point.strategic.toFixed(1)} ` +
       `OPN=${point.opening.toFixed(1)} END=${point.endgame.toFixed(1)}`
     );
   }

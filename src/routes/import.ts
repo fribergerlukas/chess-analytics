@@ -11,7 +11,7 @@ const chesscomImportSchema = z.object({
   username: z.string().min(1, "Username is required"),
   timeCategory: z.enum(["bullet", "blitz", "rapid"]).optional(),
   rated: z.boolean().optional(),
-  maxGames: z.number().int().min(1).max(200).optional(),
+  maxGames: z.number().int().min(1).max(500).optional(),
 });
 
 // TODO: Add Lichess import route (POST /lichess)

@@ -1,6 +1,7 @@
 import { Side } from "@prisma/client";
 import { cpToWinPercent, moveAccuracy, harmonicMean } from "./accuracy";
 import { classifyPositionCategory, PositionCategory } from "./positionCategory";
+import { detectLabels, PuzzleLabel } from "./puzzleClassification";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -18,6 +19,8 @@ interface CategoryResult {
   stat: number;
   percentage: number;
   successRate: number;
+  total: number;
+  success: number;
 }
 
 export interface ArenaStatsResponse {
@@ -79,6 +82,11 @@ export interface ArenaStatsResponse {
     middlegame: number | null;
     endgame: number | null;
   };
+  phaseEvalDelta: {
+    opening: number | null;
+    middlegame: number | null;
+    endgame: number | null;
+  };
   phaseBlunderRateVsExpected: {
     opening: number | null;
     middlegame: number | null;
@@ -99,6 +107,7 @@ export interface ArenaStatsResponse {
     middlegame: { wins: number | null; draws: number | null; losses: number | null };
     endgame: { wins: number | null; draws: number | null; losses: number | null };
   };
+  tacticsBreakdown: Record<string, { success: number; total: number }>;
   gamesAnalyzed: number;
   record?: { wins: number; draws: number; losses: number };
 }
@@ -799,6 +808,29 @@ export function computeArenaStats(
   let missedWinCount = 0;
   let missedSaveCount = 0;
 
+  // Per-tactical-motif hit/total tracking
+  const TACTICAL_MOTIFS: PuzzleLabel[] = [
+    "fork", "pin", "skewer", "double_attack", "discovered_attack",
+    "removal_of_defender", "overload", "deflection", "intermezzo",
+    "sacrifice", "clearance", "back_rank", "mate_threat", "checkmate",
+    "smothered_mate", "trapped_piece", "x_ray", "interference",
+    "desperado", "attraction",
+  ];
+  // Merge pin + double_attack into one combined key
+  const MERGED_MOTIFS: Record<string, string> = {
+    pin: "pin_double_attack",
+    double_attack: "pin_double_attack",
+  };
+  const OUTPUT_MOTIFS = [
+    "fork", "pin_double_attack", "skewer", "discovered_attack",
+    "removal_of_defender", "overload", "deflection", "intermezzo",
+    "sacrifice", "clearance", "back_rank", "mate_threat", "checkmate",
+    "smothered_mate", "trapped_piece", "x_ray", "interference",
+    "desperado", "attraction",
+  ];
+  const motifCounts: Record<string, { total: number; success: number }> = {};
+  for (const m of OUTPUT_MOTIFS) motifCounts[m] = { total: 0, success: 0 };
+
   // Per-game per-phase accuracy: harmonic mean of move accuracies per phase (lichess method)
   const phaseGameAccuracies: Record<"opening" | "middlegame" | "endgame", number[]> = {
     opening: [],
@@ -838,6 +870,11 @@ export function computeArenaStats(
     opening: 0, middlegame: 0, endgame: 0,
   };
 
+  // Per-game eval delta per phase (player's perspective, capped at ±1000cp)
+  const phaseEvalDeltas: Record<"opening" | "middlegame" | "endgame", number[]> = {
+    opening: [], middlegame: [], endgame: [],
+  };
+
   // Per-phase accuracy bucketed by game result
   type ResultKey = "wins" | "draws" | "losses";
   const phaseAccByResult: Record<"opening" | "middlegame" | "endgame", Record<ResultKey, number[]>> = {
@@ -858,8 +895,24 @@ export function computeArenaStats(
     // Mutually exclusive classification — each position gets exactly one category
     const cat = resolveCategory(pos);
     categoryCounts[cat].total++;
-    if (pos.cpLoss < 50) {
+    const isSuccess = pos.cpLoss < 50;
+    if (isSuccess) {
       categoryCounts[cat].success++;
+    }
+
+    // Tactical motif breakdown for tactics positions
+    if (cat === "tactics" && pos.bestMoveUci) {
+      const pvMoves = pos.pv ? pos.pv.split(" ") : [];
+      const labels = detectLabels(pos.fen, pos.bestMoveUci, pvMoves, "tactics");
+      const counted = new Set<string>();
+      for (const label of labels) {
+        const key = MERGED_MOTIFS[label] || label;
+        if (motifCounts[key] && !counted.has(key)) {
+          counted.add(key);
+          motifCounts[key].total++;
+          if (isSuccess) motifCounts[key].success++;
+        }
+      }
     }
 
     // Back stats
@@ -926,6 +979,25 @@ export function computeArenaStats(
         const playerEval = moverIsWhite ? curr.eval! : -curr.eval!;
         if (playerEval >= 200) phaseMissedWins[phase]++;
         if (playerEval <= -200) phaseMissedSaves[phase]++;
+      }
+    }
+
+    // Track first/last eval per phase for eval delta (uses ALL positions, not filtered by side)
+    const phaseFirstEval: Record<string, number | null> = { opening: null, middlegame: null, endgame: null };
+    const phaseLastEval: Record<string, number | null> = { opening: null, middlegame: null, endgame: null };
+    for (const pos of sorted) {
+      if (pos.eval == null) continue;
+      const isOpening = pos.ply <= 24;
+      const isEnd = !isOpening && isEndgamePosition(pos.fen);
+      const phase = isOpening ? "opening" : isEnd ? "endgame" : "middlegame";
+      const cappedEval = Math.max(-1000, Math.min(1000, pos.eval));
+      const playerEval = playerIsWhite ? cappedEval : -cappedEval;
+      if (phaseFirstEval[phase] == null) phaseFirstEval[phase] = playerEval;
+      phaseLastEval[phase] = playerEval;
+    }
+    for (const phase of ["opening", "middlegame", "endgame"] as const) {
+      if (phaseFirstEval[phase] != null && phaseLastEval[phase] != null) {
+        phaseEvalDeltas[phase].push(phaseLastEval[phase]! - phaseFirstEval[phase]!);
       }
     }
 
@@ -1054,6 +1126,8 @@ export function computeArenaStats(
       stat: stats[cat],
       percentage: round2(categoryData[cat].percentage * 100),
       successRate: round2(categoryData[cat].successRate * 100),
+      total: categoryCounts[cat].total,
+      success: categoryCounts[cat].success,
     };
   }
 
@@ -1184,6 +1258,17 @@ export function computeArenaStats(
         ? round2((phaseMissedSaves.endgame / phaseMoveCount.endgame) * 100)
         : null,
     },
+    phaseEvalDelta: {
+      opening: phaseEvalDeltas.opening.length > 0
+        ? round1(phaseEvalDeltas.opening.reduce((a, b) => a + b, 0) / phaseEvalDeltas.opening.length)
+        : null,
+      middlegame: phaseEvalDeltas.middlegame.length > 0
+        ? round1(phaseEvalDeltas.middlegame.reduce((a, b) => a + b, 0) / phaseEvalDeltas.middlegame.length)
+        : null,
+      endgame: phaseEvalDeltas.endgame.length > 0
+        ? round1(phaseEvalDeltas.endgame.reduce((a, b) => a + b, 0) / phaseEvalDeltas.endgame.length)
+        : null,
+    },
     phaseBlunderRateVsExpected: {
       opening: phaseMoveCount.opening > 0
         ? round1((phaseBlunders.opening / phaseMoveCount.opening) * 100 - interpolateCurve(EXPECTED_OPENING_BLUNDER_RATE_CURVE, chessRating))
@@ -1244,6 +1329,11 @@ export function computeArenaStats(
       }
       return r;
     })(),
+    tacticsBreakdown: Object.fromEntries(
+      OUTPUT_MOTIFS
+        .filter((m) => motifCounts[m].total > 0)
+        .map((m) => [m, { success: motifCounts[m].success, total: motifCounts[m].total }])
+    ),
     gamesAnalyzed: games.length,
   };
 }

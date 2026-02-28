@@ -58,6 +58,25 @@ const SEVERITY_DISPLAY: Record<string, { label: string; bg: string; fg: string }
   missed_save: { label: "Missed Save", bg: "#1a2d3b", fg: "#5ba3d9" },
 };
 
+const TACTICAL_MOTIFS: { key: string; label: string }[] = [
+  { key: "fork", label: "Fork" },
+  { key: "pin", label: "Pin" },
+  { key: "skewer", label: "Skewer" },
+  { key: "double_attack", label: "Double Attack" },
+  { key: "discovered_attack", label: "Discovered Attack" },
+  { key: "sacrifice", label: "Sacrifice" },
+  { key: "removal_of_defender", label: "Remove Defender" },
+  { key: "deflection", label: "Deflection" },
+  { key: "attraction", label: "Attraction" },
+  { key: "clearance", label: "Clearance" },
+  { key: "intermezzo", label: "Intermezzo" },
+  { key: "trapped_piece", label: "Trapped Piece" },
+  { key: "x_ray", label: "X-Ray" },
+  { key: "back_rank", label: "Back Rank" },
+  { key: "checkmate", label: "Checkmate" },
+  { key: "mate_threat", label: "Mate Threat" },
+];
+
 const API_BASE = "http://localhost:3000";
 
 // Country code → flag emoji (regional indicator symbols)
@@ -312,6 +331,7 @@ export default function PuzzlesPage() {
 
   // Training Ground state
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
   const [trainingPuzzles, setTrainingPuzzles] = useState<(PuzzleData | null)[]>(Array(10).fill(null));
   const [trainingLoading, setTrainingLoading] = useState(false);
   const [trainingOffset, setTrainingOffset] = useState(0);
@@ -929,13 +949,17 @@ export default function PuzzlesPage() {
 
   async function selectCategory(category: string) {
     setSelectedCategory(category);
+    setSelectedLabel(null);
     setTrainingPuzzles(Array(10).fill(null));
-    setTrainingLoading(true);
     setTrainingOffset(0);
     setCompletedPuzzles({});
     setActivePuzzle(null);
     setActivePuzzleIndex(-1);
 
+    // For tactics, show the motif submenu instead of fetching immediately
+    if (category === "tactics") return;
+
+    setTrainingLoading(true);
     try {
       // Import + generate if needed
       if (queriedUser) {
@@ -958,11 +982,49 @@ export default function PuzzlesPage() {
         );
         if (res.ok) {
           const data = await res.json();
-          const loaded: (PuzzleData | null)[] = [];
-          for (let i = 0; i < 10; i++) {
-            loaded.push(data.puzzles[i] || null);
-          }
-          setTrainingPuzzles(loaded);
+          setTrainingPuzzles(data.puzzles.slice(0, 10));
+          setPuzzles(data.puzzles);
+          setTotal(data.total);
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setTrainingLoading(false);
+    }
+  }
+
+  async function selectTacticsLabel(label: string | null) {
+    setSelectedLabel(label);
+    setTrainingPuzzles(Array(10).fill(null));
+    setTrainingLoading(true);
+    setTrainingOffset(0);
+    setCompletedPuzzles({});
+    setActivePuzzle(null);
+    setActivePuzzleIndex(-1);
+
+    try {
+      if (queriedUser) {
+        const isSpecificTC = reportTimeCategory && reportTimeCategory !== "all";
+        const tcParam = isSpecificTC ? `?timeCategory=${reportTimeCategory}` : "";
+        await fetch(
+          `${API_BASE}/users/${encodeURIComponent(queriedUser)}/puzzles/generate${tcParam}`,
+          { method: "POST" }
+        );
+
+        const puzzleParams = new URLSearchParams({
+          limit: "10",
+          rated: "true",
+          category: "tactics",
+          ...(label ? { label } : {}),
+          ...(isSpecificTC ? { timeCategory: reportTimeCategory } : {}),
+        });
+        const res = await fetch(
+          `${API_BASE}/users/${encodeURIComponent(queriedUser)}/puzzles?${puzzleParams}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setTrainingPuzzles(data.puzzles.slice(0, 10));
           setPuzzles(data.puzzles);
           setTotal(data.total);
         }
@@ -990,6 +1052,7 @@ export default function PuzzlesPage() {
         offset: String(newOffset),
         rated: "true",
         category: selectedCategory,
+        ...(selectedLabel ? { label: selectedLabel } : {}),
         ...(isSpecificTC ? { timeCategory: reportTimeCategory } : {}),
       });
       const res = await fetch(
@@ -2137,13 +2200,103 @@ export default function PuzzlesPage() {
           </div>
         )}
 
+        {/* Tactics Motif Submenu */}
+        {queriedUser && !loading && !activePuzzle && selectedCategory === "tactics" && selectedLabel === null && (
+          <div style={{ maxWidth: 520, margin: "0 auto" }}>
+            {/* Header with back button */}
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
+              <button
+                onClick={() => { setSelectedCategory(null); }}
+                className="text-sm font-bold transition-colors"
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  border: "none",
+                  backgroundColor: "#3a3733",
+                  color: "#d1cfcc",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#4b4847"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#3a3733"; }}
+              >
+                &larr; Back
+              </button>
+              <h2 className="font-extrabold" style={{
+                color: CATEGORY_DISPLAY.tactics.fg,
+                fontSize: 22,
+              }}>
+                Tactics Training
+              </h2>
+            </div>
+
+            {/* All Tactics button */}
+            <button
+              onClick={() => selectTacticsLabel("")}
+              className="font-extrabold transition-colors"
+              style={{
+                width: "100%",
+                height: 56,
+                borderRadius: 10,
+                border: "none",
+                backgroundColor: CATEGORY_DISPLAY.tactics.bg,
+                color: CATEGORY_DISPLAY.tactics.fg,
+                fontSize: 16,
+                cursor: "pointer",
+                marginBottom: 12,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.filter = "brightness(1.3)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.filter = "none"; }}
+            >
+              All Tactics
+            </button>
+
+            {/* Motif grid */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 10,
+            }}>
+              {TACTICAL_MOTIFS.map((motif) => (
+                <button
+                  key={motif.key}
+                  onClick={() => selectTacticsLabel(motif.key)}
+                  className="font-extrabold transition-colors"
+                  style={{
+                    height: 52,
+                    borderRadius: 10,
+                    border: "none",
+                    backgroundColor: "#3a3733",
+                    color: "#fff",
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = CATEGORY_DISPLAY.tactics.bg; e.currentTarget.style.color = CATEGORY_DISPLAY.tactics.fg; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "#3a3733"; e.currentTarget.style.color = "#fff"; }}
+                >
+                  {motif.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Puzzle List (category selected, no active puzzle) */}
-        {queriedUser && !loading && !activePuzzle && selectedCategory && (
+        {queriedUser && !loading && !activePuzzle && selectedCategory && !(selectedCategory === "tactics" && selectedLabel === null) && (
           <div style={{ maxWidth: 640, margin: "0 auto" }}>
             {/* Header with back button */}
             <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
               <button
-                onClick={() => { setSelectedCategory(null); setTrainingPuzzles(Array(10).fill(null)); }}
+                onClick={() => {
+                  if (selectedCategory === "tactics") {
+                    // Go back to motif submenu
+                    setSelectedLabel(null);
+                    setTrainingPuzzles(Array(10).fill(null));
+                    setPuzzles([]);
+                  } else {
+                    setSelectedCategory(null);
+                    setTrainingPuzzles(Array(10).fill(null));
+                  }
+                }}
                 className="text-sm font-bold transition-colors"
                 style={{
                   padding: "6px 14px",
@@ -2162,7 +2315,11 @@ export default function PuzzlesPage() {
                 color: CATEGORY_DISPLAY[selectedCategory]?.fg || "#fff",
                 fontSize: 22,
               }}>
-                {CATEGORY_DISPLAY[selectedCategory]?.label || selectedCategory} Training
+                {selectedCategory === "tactics" && selectedLabel
+                  ? `${TACTICAL_MOTIFS.find((m) => m.key === selectedLabel)?.label || "All"} Training`
+                  : selectedCategory === "tactics"
+                  ? "All Tactics Training"
+                  : `${CATEGORY_DISPLAY[selectedCategory]?.label || selectedCategory} Training`}
               </h2>
               {trainingLoading && (
                 <div
@@ -2335,14 +2492,14 @@ export default function PuzzlesPage() {
           </div>
         )}
 
-        {/* Empty states (only in puzzle list view) */}
-        {selectedCategory && !trainingPuzzles.some((p) => p !== null) && !trainingLoading && !error && queriedUser && !analyzing && (
+        {/* Empty states (only in puzzle list view, not motif submenu) */}
+        {selectedCategory && !(selectedCategory === "tactics" && selectedLabel === null) && !trainingPuzzles.some((p) => p !== null) && !trainingLoading && !error && queriedUser && !analyzing && (
           <div className="text-center py-20 font-bold" style={{ color: "#9b9895", fontSize: 15 }}>
             No puzzles found for this category. Try a different one.
           </div>
         )}
 
-        {selectedCategory && analyzing && !loading && (
+        {selectedCategory && !(selectedCategory === "tactics" && selectedLabel === null) && analyzing && !loading && (
           <div
             className="px-5 py-4 flex items-center gap-3"
             style={{ backgroundColor: "#262421", borderRadius: 10, maxWidth: 640, margin: "0 auto" }}

@@ -5,6 +5,7 @@ import "./globals.css";
 import { AuthProvider } from "./AuthContext";
 import { UserProvider } from "./UserContext";
 import Sidebar from "./Sidebar";
+import BackgroundPreloader from "./BackgroundPreloader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,6 +34,7 @@ export default function RootLayout({
         <AuthProvider>
           <UserProvider>
             <Sidebar />
+            <BackgroundPreloader />
             <div style={{ marginLeft: 230 }}>{children}</div>
           </UserProvider>
         </AuthProvider>

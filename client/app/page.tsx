@@ -28,6 +28,17 @@ interface TargetStatsData {
   expectedCategoryStats: Record<string, number>;
 }
 
+interface SideResults {
+  total: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  winRate: number;
+  lossRate: number;
+  drawRate: number;
+  accuracy: number | null;
+}
+
 interface StatsData {
   totalGames: number;
   results: {
@@ -38,10 +49,16 @@ interface StatsData {
     lossRate: number;
     drawRate: number;
   };
+  byColor?: {
+    white: SideResults;
+    black: SideResults;
+  };
   accuracy: {
     white: number | null;
     black: number | null;
     overall: number | null;
+    overallAvg?: number | null;
+    overallMedian?: number | null;
   };
 }
 
@@ -87,8 +104,16 @@ export default function Home() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [gameTimeCategory, setGameTimeCategory] = useState("bullet");
   const [gameRatedFilter, setGameRatedFilter] = useState("true");
+  const [gameSideFilter, setGameSideFilter] = useState("all");
+  const [gamePhasesOpen, setGamePhasesOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [skillCategoriesOpen, setSkillCategoriesOpen] = useState(false);
+  const [graphsOpen, setGraphsOpen] = useState(false);
+  const [tacticsOpen, setTacticsOpen] = useState(false);
   const [gamesLoading, setGamesLoading] = useState(false);
-  const [gameLimit, setGameLimit] = useState(40);
+  const [gameLimit] = useState(100);
+  const [importedCategories, setImportedCategories] = useState<Set<string>>(new Set());
+  const [reportArenaStats, setReportArenaStats] = useState<ArenaStatsData | null>(null);
 
   const cardFrontRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
@@ -131,11 +156,12 @@ export default function Home() {
     const saved = loadTarget(queriedUser, activeCard.timeControl);
     setSavedTarget(saved);
     setTargetRating(saved);
+    setReportArenaStats(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queriedUser, activeIndex, cards]);
 
   // ── Cache helpers ──
-  const CACHE_KEY = (user: string) => `arena_cache_v2_${user.toLowerCase()}`;
+  const CACHE_KEY = (user: string) => `arena_cache_v3_${user.toLowerCase()}`;
   const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
   function saveToCache(user: string, data: { cards: CardData[]; stats: StatsData; profile: ProfileData; games: GameData[] }) {
@@ -170,6 +196,9 @@ export default function Home() {
       setGames(cached.games);
       setActiveIndex(0);
       setLoading(false);
+      setReportArenaStats(null);
+      setImportedCategories(new Set(cached.cards.map((c: CardData) => c.timeControl)));
+      if (cached.cards[0]) setGameTimeCategory(cached.cards[0].timeControl);
       // Refresh in background
       fetchStats(queriedUser, true);
     } else {
@@ -188,6 +217,9 @@ export default function Home() {
         setProfile(cached.profile);
         setGames(cached.games);
         setActiveIndex(0);
+        setReportArenaStats(null);
+        setImportedCategories(new Set(cached.cards.map((c: CardData) => c.timeControl)));
+        if (cached.cards[0]) setGameTimeCategory(cached.cards[0].timeControl);
         // Refresh in background
         fetchStats(queriedUser, true);
       } else {
@@ -211,6 +243,9 @@ export default function Home() {
       setProfile(cached.profile);
       setGames(cached.games);
       setActiveIndex(0);
+      setReportArenaStats(null);
+      setImportedCategories(new Set(cached.cards.map((c: CardData) => c.timeControl)));
+      if (cached.cards[0]) setGameTimeCategory(cached.cards[0].timeControl);
       // Refresh in background
       fetchStats(authUser, true);
     } else {
@@ -227,6 +262,7 @@ export default function Home() {
       setGames([]);
       setProfile(null);
       setCards([]);
+      setReportArenaStats(null);
       setStatusMsg("Importing games from chess.com...");
       setShowProgress(false);
       loadStartRef.current = Date.now();
@@ -235,23 +271,7 @@ export default function Home() {
     }
 
     try {
-      // Step 1: Import rated games for all time controls in parallel (always import up to 100)
-      const importPromises = TIME_CONTROLS.map((tc) =>
-        fetch(`${API_BASE}/import/chesscom`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: user, timeCategory: tc, rated: true, maxGames: 100 }),
-        })
-      );
-      const importResults = await Promise.all(importPromises);
-      // Check if at least one import succeeded
-      const anyOk = importResults.some((r) => r.ok);
-      if (!anyOk) {
-        const body = await importResults[0].json().catch(() => null);
-        throw new Error(body?.error || `Import failed (${importResults[0].status})`);
-      }
-
-      // Step 2: Fetch chess.com profile + ratings in parallel
+      // Step 1: Fetch chess.com profile + ratings FIRST (fast, public API)
       if (!background) setStatusMsg("Fetching player profile...");
       let profileData: ProfileData = {};
       let ratings: Record<string, number> = {};
@@ -270,7 +290,6 @@ export default function Home() {
           if (p.avatar) {
             profileData.avatarUrl = p.avatar;
           }
-          // Country comes as a URL like "https://api.chess.com/pub/country/US"
           if (p.country) {
             const parts = p.country.split("/");
             profileData.countryCode = parts[parts.length - 1];
@@ -302,46 +321,56 @@ export default function Home() {
 
       setProfile(profileData);
 
-      // Step 3: For each time control with a rating, fetch arena stats (rated only)
+      // Step 2: Determine default TC = highest-rated
       const cardTimeControls = TIME_CONTROLS.filter((tc) => ratings[tc]);
-      if (!background) setStatusMsg("Building arena cards...");
+      const sortedTCs = [...cardTimeControls].sort((a, b) => (ratings[b] || 0) - (ratings[a] || 0));
+      const defaultTC = sortedTCs.length > 0 ? sortedTCs[0] : "blitz";
 
-      if (cardTimeControls.length > 0) {
-        const arenaPromises = cardTimeControls.map(async (tc) => {
-          const params = new URLSearchParams();
-          params.set("timeCategory", tc);
-          params.set("chessRating", String(ratings[tc]));
-          if (profileData.title) params.set("title", profileData.title);
-          params.set("rated", "true");
-          const url = `${API_BASE}/users/${encodeURIComponent(user)}/arena-stats?${params}`;
-          try {
-            const res = await fetch(url);
-            if (!res.ok) return null;
-            const arenaStats: ArenaStatsData = await res.json();
-            if (records[tc]) {
-              arenaStats.record = records[tc];
-            }
-            return {
-              timeControl: tc,
-              chessRating: ratings[tc],
-              peakRating: peakRatings[tc],
-              arenaStats,
-            } as CardData;
-          } catch {
-            return null;
-          }
-        });
+      // Step 3: Import ONLY the default TC (fast path)
+      if (!background) setStatusMsg("Importing games from chess.com...");
+      const importRes = await fetch(`${API_BASE}/import/chesscom`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: user, timeCategory: defaultTC, rated: true, maxGames: 200 }),
+      });
+      if (!importRes.ok) {
+        const body = await importRes.json().catch(() => null);
+        throw new Error(body?.error || `Import failed (${importRes.status})`);
+      }
 
-        const cardResults = await Promise.all(arenaPromises);
-        const sorted = cardResults
-          .filter((c): c is CardData => c !== null)
-          .sort((a, b) => b.chessRating - a.chessRating);
-        setCards(sorted);
+      // Mark this TC as imported
+      setImportedCategories(new Set([defaultTC]));
+
+      // Step 4: Build arena card for the default TC + fetch stats → show results
+      if (!background) setStatusMsg("Building arena card...");
+
+      // Helper to build a card for a single TC
+      const buildCard = async (tc: string): Promise<CardData | null> => {
+        if (!ratings[tc]) return null;
+        const params = new URLSearchParams();
+        params.set("timeCategory", tc);
+        params.set("chessRating", String(ratings[tc]));
+        if (profileData.title) params.set("title", profileData.title);
+        params.set("rated", "true");
+        try {
+          const res = await fetch(`${API_BASE}/users/${encodeURIComponent(user)}/arena-stats?${params}`);
+          if (!res.ok) return null;
+          const arenaStats: ArenaStatsData = await res.json();
+          if (records[tc]) arenaStats.record = records[tc];
+          return { timeControl: tc as "bullet" | "blitz" | "rapid", chessRating: ratings[tc], peakRating: peakRatings[tc], arenaStats };
+        } catch { return null; }
+      };
+
+      const defaultCard = await buildCard(defaultTC);
+      if (defaultCard) {
+        setCards([defaultCard]);
         if (!background) setActiveIndex(0);
       }
 
-      // Step 4: Fetch stats + games — use highest-rated time control, rated only
-      const defaultTC = cardTimeControls.length > 0 ? cardTimeControls[0] : "blitz";
+      // Sync dropdown to match the default TC
+      if (!background) setGameTimeCategory(defaultTC);
+
+      // Step 5: Fetch stats + games for the default TC
       if (!background) setStatusMsg("Fetching stats...");
       const statsParams = new URLSearchParams();
       statsParams.set("timeCategory", defaultTC);
@@ -368,13 +397,40 @@ export default function Home() {
         setGames(gamesData);
       }
 
-      // Save to cache — use setCards callback to read current cards from state
+      // Save to cache
       setCards((currentCards) => {
         if (currentCards.length > 0) {
           saveToCache(user, { cards: currentCards, stats: data, profile: profileData, games: gamesData });
         }
         return currentCards;
       });
+
+      // Step 6: Fire-and-forget — import remaining TCs in background, build their cards
+      const remainingTCs = sortedTCs.filter((tc) => tc !== defaultTC);
+      if (remainingTCs.length > 0) {
+        // Don't await — let this run in background
+        Promise.all(
+          remainingTCs.map(async (tc) => {
+            try {
+              await fetch(`${API_BASE}/import/chesscom`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: user, timeCategory: tc, rated: true, maxGames: 200 }),
+              });
+              setImportedCategories((prev) => new Set([...prev, tc]));
+
+              const card = await buildCard(tc);
+              if (card) {
+                setCards((prev) => {
+                  const existing = prev.filter((c) => c.timeControl !== tc);
+                  const updated = [...existing, card].sort((a, b) => b.chessRating - a.chessRating);
+                  return updated;
+                });
+              }
+            } catch { /* background import failure is non-critical */ }
+          })
+        );
+      }
     } catch (err) {
       if (!background) setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -404,6 +460,7 @@ export default function Home() {
       arenaParams.set("limit", String(gameLimit));
       if (profile?.title) arenaParams.set("title", profile.title);
       if (gameRatedFilter !== "all") arenaParams.set("rated", gameRatedFilter);
+      if (gameSideFilter !== "all") arenaParams.set("playerSide", gameSideFilter);
 
       // Build target-stats fetch if target rating is set
       const targetFetchPromise = targetRating != null
@@ -425,10 +482,9 @@ export default function Home() {
 
       if (statsRes.ok) setStats(await statsRes.json());
       if (gamesRes.ok) { const d = await gamesRes.json(); setGames(d.games); }
-      if (arenaRes.ok && activeCard) {
+      if (arenaRes.ok) {
         const arenaStats: ArenaStatsData = await arenaRes.json();
-        if (activeCard.arenaStats.record) arenaStats.record = activeCard.arenaStats.record;
-        setCards((prev) => prev.map((c, i) => i === activeIndex ? { ...c, arenaStats } : c));
+        setReportArenaStats(arenaStats);
       }
       if (targetFetchPromise) {
         const targetRes = await targetFetchPromise;
@@ -467,16 +523,38 @@ export default function Home() {
     }
   }
 
-  // Auto-refresh report when any filter changes
+  // Auto-refresh report when any filter changes (with import-on-switch for TC)
   const reportInitialized = useRef(false);
   useEffect(() => {
     if (!reportInitialized.current) {
       reportInitialized.current = true;
       return;
     }
+
+    // If the TC hasn't been imported yet, import it first
+    if (!importedCategories.has(gameTimeCategory) && queriedUser) {
+      let cancelled = false;
+      setGamesLoading(true);
+      (async () => {
+        try {
+          await fetch(`${API_BASE}/import/chesscom`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: queriedUser, timeCategory: gameTimeCategory, rated: true, maxGames: 200 }),
+          });
+          if (cancelled) return;
+          setImportedCategories((prev) => new Set([...prev, gameTimeCategory]));
+          await refreshReport();
+        } catch {
+          if (!cancelled) setGamesLoading(false);
+        }
+      })();
+      return () => { cancelled = true; };
+    }
+
     refreshReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameTimeCategory, gameRatedFilter, gameLimit]);
+  }, [gameTimeCategory, gameRatedFilter, gameSideFilter]);
 
   // Fetch target stats (debounced)
   useEffect(() => {
@@ -929,28 +1007,6 @@ export default function Home() {
 
               {/* Filters row */}
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {/* Game count pills */}
-                <div style={{ display: "flex", gap: 2, backgroundColor: "#1c1b19", borderRadius: 8, padding: 3 }}>
-                  {[40, 60, 80, 100].map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setGameLimit(n)}
-                      style={{
-                        padding: "5px 10px",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        borderRadius: 6,
-                        border: "none",
-                        backgroundColor: gameLimit === n ? "#4a4745" : "transparent",
-                        color: gameLimit === n ? "#fff" : "#6b6966",
-                        cursor: "pointer",
-                        transition: "all 0.15s ease",
-                      }}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
 
                 <select
                   value={gameTimeCategory}
@@ -990,61 +1046,199 @@ export default function Home() {
                   <option value="true">Rated</option>
                   <option value="false">Casual</option>
                 </select>
+                <select
+                  value={gameSideFilter}
+                  onChange={(e) => setGameSideFilter(e.target.value)}
+                  style={{
+                    padding: "7px 10px",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    borderRadius: 8,
+                    border: "none",
+                    backgroundColor: "#1c1b19",
+                    color: "#fff",
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="all">Both Sides</option>
+                  <option value="white">White</option>
+                  <option value="black">Black</option>
+                </select>
               </div>
             </div>
 
-            {/* Total / Wins / Losses / Draws — single row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
-              <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Total</p>
-                <p className="mt-2 font-extrabold" style={{ color: "#fff", fontSize: 32 }}>{stats.totalGames}</p>
-              </div>
-              <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Wins</p>
-                <p className="mt-2 font-extrabold" style={{ color: "#81b64c", fontSize: 32 }}>{stats.results.wins}</p>
-                <p className="mt-1 font-bold" style={{ color: "#d1cfcc", fontSize: 13 }}>{stats.results.winRate}%</p>
-              </div>
-              <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Losses</p>
-                <p className="mt-2 font-extrabold" style={{ color: "#e05252", fontSize: 32 }}>{stats.results.losses}</p>
-                <p className="mt-1 font-bold" style={{ color: "#d1cfcc", fontSize: 13 }}>{stats.results.lossRate}%</p>
-              </div>
-              <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Draws</p>
-                <p className="mt-2 font-extrabold" style={{ color: "#c27a30", fontSize: 32 }}>{stats.results.draws}</p>
-                <p className="mt-1 font-bold" style={{ color: "#d1cfcc", fontSize: 13 }}>{stats.results.drawRate}%</p>
-              </div>
+            {/* Overview — collapsible */}
+            <div>
+              <button
+                onClick={() => setOverviewOpen((v) => !v)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  marginBottom: overviewOpen ? 16 : 0,
+                }}
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="#9b9895"
+                  style={{
+                    transition: "transform 0.2s",
+                    transform: overviewOpen ? "rotate(90deg)" : "rotate(0deg)",
+                  }}
+                >
+                  <path d="M4 2l4 4-4 4" />
+                </svg>
+                <span className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Overview</span>
+              </button>
+              {overviewOpen && (() => {
+                const w = stats.byColor?.white;
+                const b = stats.byColor?.black;
+                const rowStyle = { display: "flex", justifyContent: "space-between", padding: "6px 0" } as const;
+                const labelStyle = { color: "#9b9895", fontSize: 13, fontWeight: 700 } as const;
+                const valStyle = { fontSize: 13, fontWeight: 700 } as const;
+                return (
+                  <div className="flex flex-col gap-5">
+                    {/* Summary row: Total / Wins / Losses / Draws */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
+                      <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
+                        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Total</p>
+                        <p className="mt-2 font-extrabold" style={{ color: "#fff", fontSize: 32 }}>{stats.totalGames}</p>
+                      </div>
+                      <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
+                        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Wins</p>
+                        <p className="mt-2 font-extrabold" style={{ color: "#81b64c", fontSize: 32 }}>{stats.results.wins}</p>
+                        <p className="mt-1 font-bold" style={{ color: "#d1cfcc", fontSize: 13 }}>{stats.results.winRate}%</p>
+                      </div>
+                      <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
+                        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Losses</p>
+                        <p className="mt-2 font-extrabold" style={{ color: "#e05252", fontSize: 32 }}>{stats.results.losses}</p>
+                        <p className="mt-1 font-bold" style={{ color: "#d1cfcc", fontSize: 13 }}>{stats.results.lossRate}%</p>
+                      </div>
+                      <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
+                        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Draws</p>
+                        <p className="mt-2 font-extrabold" style={{ color: "#c27a30", fontSize: 32 }}>{stats.results.draws}</p>
+                        <p className="mt-1 font-bold" style={{ color: "#d1cfcc", fontSize: 13 }}>{stats.results.drawRate}%</p>
+                      </div>
+                    </div>
+
+                    {/* By-color breakdown */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      {/* As White */}
+                      <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
+                        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895", marginBottom: 12 }}>As White</p>
+                        <div style={rowStyle}>
+                          <span style={labelStyle}>Games</span>
+                          <span style={{ ...valStyle, color: "#fff" }}>{w?.total ?? 0}</span>
+                        </div>
+                        <div style={rowStyle}>
+                          <span style={labelStyle}>Wins</span>
+                          <span style={{ ...valStyle, color: "#81b64c" }}>{w?.wins ?? 0} <span style={{ color: "#d1cfcc" }}>({w?.winRate ?? 0}%)</span></span>
+                        </div>
+                        <div style={rowStyle}>
+                          <span style={labelStyle}>Losses</span>
+                          <span style={{ ...valStyle, color: "#e05252" }}>{w?.losses ?? 0} <span style={{ color: "#d1cfcc" }}>({w?.lossRate ?? 0}%)</span></span>
+                        </div>
+                        <div style={rowStyle}>
+                          <span style={labelStyle}>Draws</span>
+                          <span style={{ ...valStyle, color: "#c27a30" }}>{w?.draws ?? 0} <span style={{ color: "#d1cfcc" }}>({w?.drawRate ?? 0}%)</span></span>
+                        </div>
+                        <div style={{ ...rowStyle, borderTop: "1px solid #3d3a37", marginTop: 4, paddingTop: 10 }}>
+                          <span style={labelStyle}>Accuracy</span>
+                          <span style={{ ...valStyle, color: "#fff" }}>{w?.accuracy != null ? `${w.accuracy}%` : "N/A"}</span>
+                        </div>
+                      </div>
+
+                      {/* As Black */}
+                      <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
+                        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895", marginBottom: 12 }}>As Black</p>
+                        <div style={rowStyle}>
+                          <span style={labelStyle}>Games</span>
+                          <span style={{ ...valStyle, color: "#fff" }}>{b?.total ?? 0}</span>
+                        </div>
+                        <div style={rowStyle}>
+                          <span style={labelStyle}>Wins</span>
+                          <span style={{ ...valStyle, color: "#81b64c" }}>{b?.wins ?? 0} <span style={{ color: "#d1cfcc" }}>({b?.winRate ?? 0}%)</span></span>
+                        </div>
+                        <div style={rowStyle}>
+                          <span style={labelStyle}>Losses</span>
+                          <span style={{ ...valStyle, color: "#e05252" }}>{b?.losses ?? 0} <span style={{ color: "#d1cfcc" }}>({b?.lossRate ?? 0}%)</span></span>
+                        </div>
+                        <div style={rowStyle}>
+                          <span style={labelStyle}>Draws</span>
+                          <span style={{ ...valStyle, color: "#c27a30" }}>{b?.draws ?? 0} <span style={{ color: "#d1cfcc" }}>({b?.drawRate ?? 0}%)</span></span>
+                        </div>
+                        <div style={{ ...rowStyle, borderTop: "1px solid #3d3a37", marginTop: 4, paddingTop: 10 }}>
+                          <span style={labelStyle}>Accuracy</span>
+                          <span style={{ ...valStyle, color: "#fff" }}>{b?.accuracy != null ? `${b.accuracy}%` : "N/A"}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Overall accuracy — average & median */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
+                        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Average Accuracy</p>
+                        <p className="mt-2 font-extrabold" style={{ color: "#fff", fontSize: 32 }}>
+                          {stats.accuracy.overallAvg != null ? `${stats.accuracy.overallAvg}%` : "N/A"}
+                        </p>
+                      </div>
+                      <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
+                        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Median Accuracy</p>
+                        <p className="mt-2 font-extrabold" style={{ color: "#fff", fontSize: 32 }}>
+                          {stats.accuracy.overallMedian != null ? `${stats.accuracy.overallMedian}%` : "N/A"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
-            {/* Accuracy */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Accuracy (White)</p>
-                <p className="mt-2 font-extrabold" style={{ color: "#fff", fontSize: 32 }}>
-                  {stats.accuracy.white != null ? `${stats.accuracy.white}%` : "N/A"}
-                </p>
-              </div>
-              <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Accuracy (Black)</p>
-                <p className="mt-2 font-extrabold" style={{ color: "#fff", fontSize: 32 }}>
-                  {stats.accuracy.black != null ? `${stats.accuracy.black}%` : "N/A"}
-                </p>
-              </div>
-              <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Accuracy (Overall)</p>
-                <p className="mt-2 font-extrabold" style={{ color: "#fff", fontSize: 32 }}>
-                  {stats.accuracy.overall != null ? `${stats.accuracy.overall}%` : "N/A"}
-                </p>
-              </div>
+            {/* Graphs */}
+            <div>
+              <button
+                onClick={() => setGraphsOpen((v) => !v)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  marginBottom: graphsOpen ? 16 : 0,
+                }}
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="#9b9895"
+                  style={{
+                    transition: "transform 0.2s",
+                    transform: graphsOpen ? "rotate(90deg)" : "rotate(0deg)",
+                  }}
+                >
+                  <path d="M4 2l4 4-4 4" />
+                </svg>
+                <span className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Graphs</span>
+              </button>
+              {graphsOpen && games.length > 0 && !gamesLoading && (
+                <div className="flex flex-col gap-5">
+                  <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
+                    <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895", marginBottom: 16 }}>Accuracy by Result</p>
+                    <FormGraph games={games} chessRating={cards.find((c) => c.timeControl === gameTimeCategory)?.chessRating} />
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Result Form Graph */}
-            {games.length > 0 && !gamesLoading && (
-              <div className="p-6" style={{ backgroundColor: "#262421", borderRadius: 12 }}>
-                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895", marginBottom: 16 }}>Accuracy by Result</p>
-                <FormGraph games={games} chessRating={cards.find((c) => c.timeControl === gameTimeCategory)?.chessRating} />
-              </div>
-            )}
             {gamesLoading && (
               <div className="flex justify-center py-8">
                 <div
@@ -1056,19 +1250,21 @@ export default function Home() {
 
             {/* Category Breakdown */}
             {(() => {
-              const phaseAccuracy = cards[activeIndex]?.arenaStats?.phaseAccuracy;
-              const phaseAccVsExpected = cards[activeIndex]?.arenaStats?.phaseAccuracyVsExpected;
-              const phaseBestMove = cards[activeIndex]?.arenaStats?.phaseBestMoveRate;
-              const phaseBestMoveVsExpected = cards[activeIndex]?.arenaStats?.phaseBestMoveRateVsExpected;
-              const phaseByResult = cards[activeIndex]?.arenaStats?.phaseAccuracyByResult;
-              const phaseBlunder = cards[activeIndex]?.arenaStats?.phaseBlunderRate;
-              const phaseMedianAcc = cards[activeIndex]?.arenaStats?.phaseMedianAccuracy;
-              const phaseMissedWin = cards[activeIndex]?.arenaStats?.phaseMissedWinRate;
-              const phaseMissedSave = cards[activeIndex]?.arenaStats?.phaseMissedSaveRate;
-              const phaseBlunderVsExpected = cards[activeIndex]?.arenaStats?.phaseBlunderRateVsExpected;
-              const phaseMissedWinVsExpected = cards[activeIndex]?.arenaStats?.phaseMissedWinRateVsExpected;
-              const phaseMissedSaveVsExpected = cards[activeIndex]?.arenaStats?.phaseMissedSaveRateVsExpected;
-              const phaseByResultVsExpected = cards[activeIndex]?.arenaStats?.phaseAccuracyByResultVsExpected;
+              const effectiveArena = reportArenaStats ?? cards[activeIndex]?.arenaStats;
+              const phaseAccuracy = effectiveArena?.phaseAccuracy;
+              const phaseAccVsExpected = effectiveArena?.phaseAccuracyVsExpected;
+              const phaseBestMove = effectiveArena?.phaseBestMoveRate;
+              const phaseBestMoveVsExpected = effectiveArena?.phaseBestMoveRateVsExpected;
+              const phaseByResult = effectiveArena?.phaseAccuracyByResult;
+              const phaseBlunder = effectiveArena?.phaseBlunderRate;
+              const phaseMedianAcc = effectiveArena?.phaseMedianAccuracy;
+              const phaseMissedWin = effectiveArena?.phaseMissedWinRate;
+              const phaseMissedSave = effectiveArena?.phaseMissedSaveRate;
+              const phaseBlunderVsExpected = effectiveArena?.phaseBlunderRateVsExpected;
+              const phaseMissedWinVsExpected = effectiveArena?.phaseMissedWinRateVsExpected;
+              const phaseMissedSaveVsExpected = effectiveArena?.phaseMissedSaveRateVsExpected;
+              const phaseEvalDelta = effectiveArena?.phaseEvalDelta;
+              const phaseByResultVsExpected = effectiveArena?.phaseAccuracyByResultVsExpected;
               const hasTarget = targetStats != null;
               const PHASE_CATEGORIES = [
                 { abbr: "OPN", label: "Opening", color: "#a37acc", accKey: "opening" as const },
@@ -1082,6 +1278,7 @@ export default function Home() {
                 "Blunder Rate",
                 "Missed Wins",
                 "Missed Saves",
+                "Eval Delta",
                 "Accuracy in Wins",
                 "Accuracy in Draws",
                 "Accuracy in Losses",
@@ -1091,8 +1288,6 @@ export default function Home() {
                   metrics: ["Missed Win Rate", "Conversion Rate", "Initiative Pressing", "Sacrifice Accuracy", "Sacrifice Count"] },
                 { abbr: "DEF", label: "Defending", color: "#5b9bd5",
                   metrics: ["Missed Save Rate", "Hold Rate", "Critical Accuracy", "Pressure Zone Accuracy", "Comeback Rate", "Post-Blunder Accuracy"] },
-                { abbr: "TAC", label: "Tactics", color: "#c27a30",
-                  metrics: ["Success Rate", "Blunder Rate", "Difficulty Breakdown"] },
                 { abbr: "STR", label: "Strategy", color: "#81b64c",
                   metrics: ["Success Rate", "CP Loss Distribution"] },
               ];
@@ -1123,6 +1318,13 @@ export default function Home() {
                 if (metric === "Missed Saves") {
                   const val = phaseMissedSave?.[cat.accKey];
                   if (val != null) return { text: `${val.toFixed(1)}%`, color: val > 2 ? "#e05252" : val > 1 ? "#c27a30" : "#81b64c" };
+                }
+                if (metric === "Eval Delta") {
+                  const val = phaseEvalDelta?.[cat.accKey];
+                  if (val != null) {
+                    const sign = val > 0 ? "+" : "";
+                    return { text: `${sign}${val.toFixed(0)}cp`, color: val > 0 ? "#81b64c" : val < 0 ? "#e05252" : "#fff" };
+                  }
                 }
                 if (metric === "Accuracy in Wins") {
                   const val = phaseByResult?.[cat.accKey]?.wins;
@@ -1178,6 +1380,9 @@ export default function Home() {
                     return { text: `${+(val - vs).toFixed(1)}%`, color: "#9b9895" };
                   }
                 }
+                if (metric === "Eval Delta") {
+                  return { text: "0cp", color: "#9b9895" };
+                }
                 if (metric === "Accuracy in Wins") {
                   const val = phaseByResult?.[cat.accKey]?.wins;
                   const vs = phaseByResultVsExpected?.[cat.accKey]?.wins;
@@ -1225,6 +1430,9 @@ export default function Home() {
                   const val = targetStats.expectedMissedSaveRate?.[cat.accKey];
                   if (val != null) return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
                 }
+                if (metric === "Eval Delta") {
+                  return { text: "0cp", color: "#9b9895" };
+                }
                 if (metric === "Accuracy in Wins") {
                   const val = targetStats.expectedAccuracyByResult?.[cat.accKey]?.wins;
                   if (val != null) return { text: `${val.toFixed(1)}%`, color: "#9b9895" };
@@ -1240,14 +1448,33 @@ export default function Home() {
                 return { text: "\u2014", color: "#4a4745" };
               };
 
+              // Metrics where lower values = better performance
+              const LOWER_IS_BETTER = new Set(["Blunder Rate", "Missed Wins", "Missed Saves"]);
+
+              // Compare You vs Peers: green if better, red if worse, yellow if equal
+              const getComparisonColor = (metric: string, youText: string, peerText: string): string => {
+                const youNum = parseFloat(youText);
+                const peerNum = parseFloat(peerText);
+                if (isNaN(youNum) || isNaN(peerNum)) return "#9b9895"; // no data — neutral
+                const diff = youNum - peerNum;
+                if (Math.abs(diff) < 0.15) return "#c9b84a"; // essentially equal — yellow
+                const lowerBetter = LOWER_IS_BETTER.has(metric);
+                const isBetter = lowerBetter ? diff < 0 : diff > 0;
+                return isBetter ? "#81b64c" : "#e05252";
+              };
+
               const renderPhasePanel = (cat: typeof PHASE_CATEGORIES[number], metrics: string[]) => {
                 const accVal = phaseAccuracy?.[cat.accKey];
-                const colCount = hasTarget ? 4 : 3;
-                const gridCols = hasTarget
-                  ? "1fr 62px 62px 62px"
-                  : "1fr 62px 62px";
+                // Transposed layout: metrics as columns, You/Peers/Target as rows
+                const metricColTemplate = `72px repeat(${metrics.length}, 1fr)`;
+
+                // Pre-compute all values for comparison
+                const youVals = metrics.map((m) => getYourValue(cat, m));
+                const peerVals = metrics.map((m) => getRangeValue(cat, m));
+                const targetVals = hasTarget ? metrics.map((m) => getTargetValue(cat, m)) : null;
+
                 return (
-                  <div key={cat.abbr} style={{ backgroundColor: "#262421", borderRadius: 12, padding: 20 }}>
+                  <div key={cat.abbr} style={{ backgroundColor: "#262421", borderRadius: 12, padding: "16px 20px" }}>
                     {/* Panel header */}
                     <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
                       <span style={{
@@ -1265,48 +1492,92 @@ export default function Home() {
                         {accVal != null ? `${accVal.toFixed(1)}%` : "\u2014"}
                       </span>
                     </div>
-                    <div style={{ height: 1, backgroundColor: "#3a3733", marginBottom: 6 }} />
+                    <div style={{ height: 1, backgroundColor: "#3a3733", marginBottom: 8 }} />
 
-                    {/* Column headers */}
+                    {/* Column headers (metric names) */}
                     <div style={{
                       display: "grid",
-                      gridTemplateColumns: gridCols,
-                      gap: 4,
+                      gridTemplateColumns: metricColTemplate,
+                      gap: 2,
                       paddingBottom: 6,
                       marginBottom: 2,
                       borderBottom: "1px solid #3a3733",
+                      overflowX: "auto",
                     }}>
                       <span />
-                      <span style={{ fontSize: 9, fontWeight: 700, color: "#6b6966", textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "center" }}>You</span>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: "#6b6966", textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "center" }}>Peers</span>
-                      {hasTarget && (
-                        <span style={{ fontSize: 9, fontWeight: 700, color: "#6b6966", textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "center" }}>Target</span>
-                      )}
+                      {metrics.map((m) => (
+                        <span key={m} style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          color: "#6b6966",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.02em",
+                          textAlign: "center",
+                          lineHeight: 1.2,
+                        }}>{m}</span>
+                      ))}
                     </div>
 
-                    {/* Metric rows */}
-                    {metrics.map((metric, i) => {
-                      const yours = getYourValue(cat, metric);
-                      const range = getRangeValue(cat, metric);
-                      const target = getTargetValue(cat, metric);
-                      return (
-                        <div key={metric} style={{
-                          display: "grid",
-                          gridTemplateColumns: gridCols,
-                          gap: 4,
-                          alignItems: "center",
-                          padding: "7px 0",
-                          borderBottom: i < metrics.length - 1 ? "1px solid #3a3733" : "none",
-                        }}>
-                          <span style={{ color: "#9b9895", fontSize: 13 }}>{metric}</span>
-                          <span style={{ color: yours.color, fontSize: 13, fontWeight: 700, textAlign: "center" }}>{yours.text}</span>
-                          <span style={{ color: range.color, fontSize: 13, fontWeight: 700, textAlign: "center" }}>{range.text}</span>
-                          {hasTarget && (
-                            <span style={{ color: target.color, fontSize: 13, fontWeight: 700, textAlign: "center" }}>{target.text}</span>
-                          )}
-                        </div>
-                      );
-                    })}
+                    {/* You row — colored by comparison to peers */}
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: metricColTemplate,
+                      gap: 2,
+                      alignItems: "center",
+                      padding: "7px 0",
+                      borderBottom: "1px solid #3a3733",
+                    }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: "0.04em" }}>You</span>
+                      {metrics.map((metric, i) => (
+                        <span key={metric} style={{
+                          color: getComparisonColor(metric, youVals[i].text, peerVals[i].text),
+                          fontSize: 12,
+                          fontWeight: 700,
+                          textAlign: "center",
+                        }}>{youVals[i].text}</span>
+                      ))}
+                    </div>
+
+                    {/* Peers row — neutral gray */}
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: metricColTemplate,
+                      gap: 2,
+                      alignItems: "center",
+                      padding: "7px 0",
+                      borderBottom: hasTarget ? "1px solid #3a3733" : "none",
+                    }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#6b6966", textTransform: "uppercase", letterSpacing: "0.04em" }}>Peers</span>
+                      {metrics.map((metric, i) => (
+                        <span key={metric} style={{
+                          color: peerVals[i].text === "\u2014" ? "#4a4745" : "#9b9895",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          textAlign: "center",
+                        }}>{peerVals[i].text}</span>
+                      ))}
+                    </div>
+
+                    {/* Target row — neutral gray */}
+                    {hasTarget && targetVals && (
+                      <div style={{
+                        display: "grid",
+                        gridTemplateColumns: metricColTemplate,
+                        gap: 2,
+                        alignItems: "center",
+                        padding: "7px 0",
+                      }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#6b6966", textTransform: "uppercase", letterSpacing: "0.04em" }}>Target</span>
+                        {metrics.map((metric, i) => (
+                          <span key={metric} style={{
+                            color: targetVals[i].text === "\u2014" ? "#4a4745" : "#9b9895",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textAlign: "center",
+                          }}>{targetVals[i].text}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               };
@@ -1343,14 +1614,179 @@ export default function Home() {
               );
               return (
                 <>
-                  <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895", marginBottom: 16 }}>Game Phases</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-5" style={{ marginBottom: 20 }}>
-                    {PHASE_CATEGORIES.map((cat) => renderPhasePanel(cat, PHASE_METRICS))}
-                  </div>
-                  <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895", marginBottom: 16 }}>Skill Categories</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    {SKILL_CATEGORIES.map((cat) => renderPanel(cat, cat.metrics))}
-                  </div>
+                  <button
+                    onClick={() => setGamePhasesOpen((v) => !v)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      marginBottom: gamePhasesOpen ? 16 : 20,
+                    }}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 12 12"
+                      fill="#9b9895"
+                      style={{
+                        transition: "transform 0.2s",
+                        transform: gamePhasesOpen ? "rotate(90deg)" : "rotate(0deg)",
+                      }}
+                    >
+                      <path d="M4 2l4 4-4 4" />
+                    </svg>
+                    <span className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Game Phases</span>
+                  </button>
+                  {gamePhasesOpen && (
+                    <div className="flex flex-col gap-5" style={{ marginBottom: 20 }}>
+                      {PHASE_CATEGORIES.map((cat) => renderPhasePanel(cat, PHASE_METRICS))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setSkillCategoriesOpen((v) => !v)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      marginBottom: skillCategoriesOpen ? 16 : 0,
+                    }}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 12 12"
+                      fill="#9b9895"
+                      style={{
+                        transition: "transform 0.2s",
+                        transform: skillCategoriesOpen ? "rotate(90deg)" : "rotate(0deg)",
+                      }}
+                    >
+                      <path d="M4 2l4 4-4 4" />
+                    </svg>
+                    <span className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Skill Categories</span>
+                  </button>
+                  {skillCategoriesOpen && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      {SKILL_CATEGORIES.map((cat) => renderPanel(cat, cat.metrics))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setTacticsOpen((v) => !v)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      marginTop: 20,
+                      marginBottom: tacticsOpen ? 16 : 0,
+                    }}
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 12 12"
+                      fill="#9b9895"
+                      style={{
+                        transition: "transform 0.2s",
+                        transform: tacticsOpen ? "rotate(90deg)" : "rotate(0deg)",
+                      }}
+                    >
+                      <path d="M4 2l4 4-4 4" />
+                    </svg>
+                    <span className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9b9895" }}>Tactics</span>
+                  </button>
+                  {tacticsOpen && (() => {
+                    const breakdown = (reportArenaStats ?? cards[activeIndex]?.arenaStats)?.tacticsBreakdown;
+                    const MOTIF_LABELS: Record<string, { display: string; labels: string[] }> = {
+                      fork: { display: "Fork", labels: ["fork"] },
+                      pin_double_attack: { display: "Pin / Double Attack", labels: ["pin", "double_attack"] },
+                      skewer: { display: "Skewer", labels: ["skewer"] },
+                      discovered_attack: { display: "Discovered Attack", labels: ["discovered_attack"] },
+                      removal_of_defender: { display: "Removal of Defender", labels: ["removal_of_defender"] },
+                      overload: { display: "Overload", labels: ["overload"] },
+                      deflection: { display: "Deflection", labels: ["deflection"] },
+                      intermezzo: { display: "Intermezzo", labels: ["intermezzo"] },
+                      sacrifice: { display: "Sacrifice", labels: ["sacrifice"] },
+                      clearance: { display: "Clearance", labels: ["clearance"] },
+                      back_rank: { display: "Back Rank", labels: ["back_rank"] },
+                      mate_threat: { display: "Mate Threat", labels: ["mate_threat"] },
+                      checkmate: { display: "Checkmate", labels: ["checkmate"] },
+                      smothered_mate: { display: "Smothered Mate", labels: ["smothered_mate"] },
+                      trapped_piece: { display: "Trapped Piece", labels: ["trapped_piece"] },
+                      x_ray: { display: "X-Ray", labels: ["x_ray"] },
+                      interference: { display: "Interference", labels: ["interference"] },
+                      desperado: { display: "Desperado", labels: ["desperado"] },
+                      attraction: { display: "Attraction", labels: ["attraction"] },
+                    };
+                    const ALL_MOTIFS = Object.keys(MOTIF_LABELS);
+                    return (
+                      <div style={{ backgroundColor: "#262421", borderRadius: 12, padding: "16px 20px" }}>
+                        <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
+                          <span style={{
+                            backgroundColor: "#c27a30",
+                            color: "#fff",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            marginRight: 10,
+                            lineHeight: 1,
+                          }}>TAC</span>
+                          <span style={{ color: "#fff", fontSize: 14, fontWeight: 700 }}>Tactics Breakdown</span>
+                        </div>
+                        <div style={{ height: 1, backgroundColor: "#3a3733", marginBottom: 8 }} />
+                        <style>{`
+                          .motif-row { transition: background-color 0.15s ease; border-radius: 6px; }
+                          .motif-row[data-clickable="true"]:hover { background-color: #3a3733; }
+                        `}</style>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 0 }}>
+                          {ALL_MOTIFS.map((motif) => {
+                            const info = MOTIF_LABELS[motif];
+                            const data = breakdown?.[motif];
+                            const success = data?.success ?? 0;
+                            const total = data?.total ?? 0;
+                            const hasData = total > 0;
+                            const href = hasData
+                              ? `/puzzles?label=${info.labels[0]}`
+                              : undefined;
+                            return (
+                              <a
+                                key={motif}
+                                className="motif-row"
+                                data-clickable={hasData ? "true" : "false"}
+                                href={href}
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                  padding: "8px 12px",
+                                  borderBottom: "1px solid #3a3733",
+                                  textDecoration: "none",
+                                  cursor: hasData ? "pointer" : "default",
+                                }}
+                              >
+                                <span style={{ color: hasData ? "#d1cfcc" : "#9b9895", fontSize: 13 }}>{info.display}</span>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: hasData ? "#fff" : "#4a4745" }}>
+                                  {hasData ? `${success}/${total}` : "\u2014"}
+                                </span>
+                              </a>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </>
               );
             })()}
